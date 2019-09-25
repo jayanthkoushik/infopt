@@ -7,7 +7,6 @@ import itertools
 import numpy as np
 from scipy.spatial.distance import cdist
 
-
 Atom = namedtuple("Atom", ["no", "position"])
 """An atom represented as (atomic number, position)."""
 
