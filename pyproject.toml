@@ -1,0 +1,89 @@
+[tool.black]
+line-length = 88
+target-version = ["py36"]
+
+[tool.isort]
+line_length = 88
+indent = '    '
+multi_line_output = 3
+force_grid_wrap = 0
+combine_as_imports = true
+order_by_type = false
+use_parentheses = true
+include_trailing_comma = true
+force_sort_within_sections = true
+known_shiny = "shinyutils"
+import_heading_shiny = "Must be imported before GPy to configure matplotlib"
+sections = "FUTURE,STDLIB,SHINY,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
+
+[tool.poetry]
+name = "infopt"
+version = "1.0.0"
+description = "Black-box optimization with influence functions"
+authors = ["Jayanth Koushik <jnkoushik@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/jayanthkoushik/infopt"
+
+keywords = [
+    "bayesian optimization",
+    "black-box optimization",
+    "influence function",
+    "optimization"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[tool.poetry.dependencies]
+python = "^3.6"
+numpy = "^1.14"
+paramz = "^0.9.4"
+cffi = "*"
+gpy = "=1.9.8"
+gpyopt = "*"
+matplotlib = "*"
+torch = "=1.2.0"
+
+scipy = { version = "*", optional = true }
+tensorboard = { version = "^1.15", optional = true }
+tqdm = { version = "^4.11", optional = true }
+pandas = { version = "^0.23.0", optional = true }
+h5py = { version = "*", optional = true }
+scikit-image = { version = "*", optional = true }
+torchvision = { version = "*", optional = true }
+shinyutils = { version = "^1.0", optional = true }
+jupyter = { version = "^1.0", optional = true }
+scikit-learn = "^0.21.0"
+trains = { version = "^0.10.7", optional = true }
+gpustat = { version = "^0.6.0", optional = true }
+
+[tool.poetry.dev-dependencies]
+black = { version = "*", allows-prereleases = true }
+pylint = "*"
+bumpversion = "*"
+pre-commit = "^1.15"
+isort = { version = "^4.3", extras = ["pyproject"] }
+
+[tool.poetry.extras]
+test = ["scipy", "tensorboard"]
+experiments = [
+    "tensorboard",
+    "tqdm",
+    "pandas",
+    "h5py",
+    "scikit-image",
+    "torchvision",
+    "shinyutils",
+    "jupyter",
+    "trains",
+    "gpustat"
+]
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
