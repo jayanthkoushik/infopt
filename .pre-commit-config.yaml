@@ -1,0 +1,7 @@
+- repo: local
+  hooks:
+  - id: buildpdf
+    name: build pdf of paper
+    files: paper/
+    entry: .githooks/buildpdf.sh
+    language: script
