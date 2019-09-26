@@ -1,4 +1,4 @@
-name: Test infopt package
+name: Run tests
 
 on:
   push:
