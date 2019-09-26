@@ -1,4 +1,4 @@
-name: Build paper website
+name: Create paper website on gh-pages branch
 
 on:
   push:
