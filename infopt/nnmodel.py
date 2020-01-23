@@ -60,7 +60,7 @@ class NNModel(BOModel):
             # Compute predictions and loss
             nonlocal batch_X, batch_Y, self
             batch_Yhat = self.net(batch_X)
-            _loss = self.criterion(batch_Y, batch_Yhat)
+            _loss = self.criterion(batch_Yhat, batch_Y)
             self.optim.zero_grad()
             _loss.backward()
             return _loss
@@ -83,7 +83,7 @@ class NNModel(BOModel):
         dls = []
         mean_loss = 0
         for y, yhat in zip(Y_idxs, Yhat_idxs):
-            l = self.criterion(y, yhat)
+            l = self.criterion(yhat, y)
             mean_loss += l / ihvp_n
 
             with torch.no_grad():

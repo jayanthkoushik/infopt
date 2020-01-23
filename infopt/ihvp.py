@@ -198,7 +198,7 @@ class LowRankIHVP(BaseIHVP):
             batch_Yhat = self.app_net(*map(torch.stack, zip(*batch_X)))
             batch_Yhat = list(zip(*batch_Yhat))
             loss = sum(
-                self.criterion(y, torch.cat(y_hat)) / batch_size
+                self.criterion(torch.cat(y_hat), y) / batch_size
                 for y, y_hat in zip(batch_Y, batch_Yhat)
             )
             self.total_iter += 1

@@ -154,7 +154,7 @@ class HypOptObj(metaclass=ABCMeta):
         model = self._get_model(*x_i)
         model.fit(self.dataset.X_tr, self.dataset.y_tr)
         yhat_te = model.predict(self.dataset.X_te)
-        return self.loss(self.dataset.y_te, yhat_te)
+        return self.loss(yhat_te, self.dataset.y_te)
 
     def f(self, x):
         """Loss for each set of hyper-parameter values."""
