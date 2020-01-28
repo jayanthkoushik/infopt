@@ -133,9 +133,9 @@ class NNModel(BOModel):
 
         with torch.no_grad():
             s = torch.sqrt(v)
-            if s > 0:
-                self.dsdx.div_(s)
             if comp_grads:
+                if s > 0:
+                    self.dsdx.div_(s)
                 dmdx = torch.autograd.grad(m, x)[0]
                 dsdx = self.dsdx
             else:
