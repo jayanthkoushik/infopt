@@ -135,7 +135,7 @@ name = "certifi"
 version = "2020.6.20"
 description = "Python package for providing Mozilla's CA Bundle."
 category = "main"
-optional = true
+optional = false
 python-versions = "*"
 
 [[package]]
@@ -208,7 +208,7 @@ name = "cycler"
 version = "0.10.0"
 description = "Composable style cycles"
 category = "main"
-optional = true
+optional = false
 python-versions = "*"
 
 [package.dependencies]
@@ -646,7 +646,7 @@ name = "kiwisolver"
 version = "1.2.0"
 description = "A fast implementation of the Cassowary constraint solver"
 category = "main"
-optional = true
+optional = false
 python-versions = ">=3.6"
 
 [[package]]
@@ -686,7 +686,7 @@ name = "matplotlib"
 version = "3.3.1"
 description = "Python plotting package"
 category = "main"
-optional = true
+optional = false
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -939,7 +939,7 @@ name = "pillow"
 version = "7.2.0"
 description = "Python Imaging Library (Fork)"
 category = "main"
-optional = true
+optional = false
 python-versions = ">=3.5"
 
 [[package]]
@@ -1007,7 +1007,7 @@ description = "Run a subprocess in a pseudo terminal"
 category = "main"
 optional = true
 python-versions = "*"
-marker = "sys_platform != \"win32\" or os_name != \"nt\" or python_version >= \"3.3\" and sys_platform != \"win32\""
+marker = "python_version >= \"3.3\" and sys_platform != \"win32\" or sys_platform != \"win32\" or os_name != \"nt\" or python_version >= \"3.3\" and sys_platform != \"win32\" and (python_version >= \"3.3\" and sys_platform != \"win32\" or sys_platform != \"win32\")"
 
 [[package]]
 name = "pyasn1"
@@ -1064,7 +1064,7 @@ name = "pyparsing"
 version = "2.4.7"
 description = "Python parsing module"
 category = "main"
-optional = true
+optional = false
 python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -1083,7 +1083,7 @@ name = "python-dateutil"
 version = "2.8.1"
 description = "Extensions to the standard Python datetime module"
 category = "main"
-optional = true
+optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 
 [package.dependencies]
@@ -1215,7 +1215,7 @@ requests = ">=2.0.0"
 
 [[package]]
 name = "rich"
-version = "5.2.1"
+version = "6.0.0"
 description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
 category = "main"
 optional = true
@@ -1321,7 +1321,7 @@ python-versions = "*"
 
 [[package]]
 name = "shinyutils"
-version = "4.1.7"
+version = "4.1.8"
 description = "Personal collection of common utilities"
 category = "main"
 optional = true
@@ -1330,7 +1330,7 @@ python-versions = ">=3.6.1,<4.0.0"
 [package.extras]
 color = ["crayons", "rich"]
 plotting = ["matplotlib (>=3.3,<4.0)", "seaborn (>=0.10,<0.11)"]
-pytorch = ["torch (>=1.5.0,<1.6.0)", "torchvision", "tensorboard (>=2.2.1,<3.0.0)", "tqdm (>=4.46.0,<5.0.0)"]
+pytorch = ["torch (>=1.5.0,<2.0.0)", "torchvision", "tensorboard (>=2.2.1,<3.0.0)", "tqdm (>=4.46.0,<5.0.0)"]
 
 [package.dependencies]
 [package.dependencies.crayons]
@@ -1626,7 +1626,7 @@ experiments = ["tensorboard", "scikit-image", "scikit-learn", "tqdm", "pandas", 
 [metadata]
 lock-version = "1.0"
 python-versions = "^3.6.1"
-content-hash = "8234b17bbe3855582b0e1f8bb3c4becb6014a0e200688cafef989473154edfa0"
+content-hash = "21d3120914c406c2334ed3bd0797157a95e4fca0c6d4821e2315232ebf07a0cb"
 
 [metadata.files]
 absl-py = [
@@ -2379,8 +2379,8 @@ requests-oauthlib = [
     {file = "requests_oauthlib-1.3.0-py3.7.egg", hash = "sha256:fa6c47b933f01060936d87ae9327fead68768b69c6c9ea2109c48be30f2d4dbc"},
 ]
 rich = [
-    {file = "rich-5.2.1-py3-none-any.whl", hash = "sha256:a3c9332f47ca9469e523349fedb132b5b319ab14c2f9e74df87832add28be311"},
-    {file = "rich-5.2.1.tar.gz", hash = "sha256:d791263dc505b635b75249dfc1991510d7eabb27047652e3209e98384365c9c9"},
+    {file = "rich-6.0.0-py3-none-any.whl", hash = "sha256:75bb80a52a550424a9f36bfdc57dc2977a2b8d0a1eb3b011df258c017d8ba322"},
+    {file = "rich-6.0.0.tar.gz", hash = "sha256:53c683a79e3f949d675b1d04e6fe3ccd53fad97aa7e2f6a83f2985502663f420"},
 ]
 rsa = [
     {file = "rsa-4.6-py3-none-any.whl", hash = "sha256:6166864e23d6b5195a5cfed6cd9fed0fe774e226d8f854fcb23b7bbef0350233"},
@@ -2446,8 +2446,8 @@ send2trash = [
     {file = "Send2Trash-1.5.0.tar.gz", hash = "sha256:60001cc07d707fe247c94f74ca6ac0d3255aabcb930529690897ca2a39db28b2"},
 ]
 shinyutils = [
-    {file = "shinyutils-4.1.7-py3-none-any.whl", hash = "sha256:e1650f4f1c429d175f78e589d60ad41f4b32aebf8454be95c06701c7fd920ca2"},
-    {file = "shinyutils-4.1.7.tar.gz", hash = "sha256:6634030ff6858325e4bcd0ac03b54d02709cec43671a349436f705aef6dd27fc"},
+    {file = "shinyutils-4.1.8-py3-none-any.whl", hash = "sha256:9b294f1f466dc550eafdae17a2316468828f928a46e2e74e9756d4af1e639e23"},
+    {file = "shinyutils-4.1.8.tar.gz", hash = "sha256:9f7a710d3b45874d8854e07f277c38a9791838434af0e529937f66927c66144c"},
 ]
 six = [
     {file = "six-1.15.0-py2.py3-none-any.whl", hash = "sha256:8b74bedcbbbaca38ff6d7491d76f2b06b3592611af620f8426e82dddb04a5ced"},
