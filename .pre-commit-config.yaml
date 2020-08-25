@@ -16,6 +16,12 @@ repos:
     entry: poetry run pylint
     language: system
     types: [python]
+  - id: test
+    name: test
+    entry: poetry run python -m unittest
+    language: system
+    files: 'infopt/|tests/'
+    pass_filenames: false
   - id: nbstrip
     name: strip jupyter notebooks
     files: \.ipynb$
