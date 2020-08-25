@@ -1,14 +1,14 @@
 """plotting.py: utilities for plotting results."""
 
 import code
-from glob import glob
 import logging
 import os
 import pickle
 import re
+from glob import glob
 
 # Must be imported before GPy to configure matplotlib
-from shinyutils import MatWrap as mw
+from shinyutils.matwrap import MatWrap as mw
 
 import pandas as pd
 

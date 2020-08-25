@@ -3,9 +3,9 @@
 import logging
 
 import GPyOpt.acquisitions
-from GPyOpt.models import GPModel, GPModel_MCMC
 import torch
 import torch.nn as nn
+from GPyOpt.models import GPModel, GPModel_MCMC
 
 from exputils.optimization import SinglePassAcquisitionOptimizer
 from infopt.gpinfacq import GPInfAcq

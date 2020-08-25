@@ -1,9 +1,9 @@
 """LCB acquisition function (and optimizer) for neural network model."""
 
-from GPyOpt.acquisitions import AcquisitionLCB
-from GPyOpt.experiment_design import RandomDesign
 import numpy as np
 import torch
+from GPyOpt.acquisitions import AcquisitionLCB
+from GPyOpt.experiment_design import RandomDesign
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 
@@ -15,6 +15,7 @@ class NNAcq(AcquisitionLCB):
     The difference is the use of a gradient descent optimizer.
     """
 
+    # pylint: disable=dangerous-default-value
     def __init__(
         self,
         model,

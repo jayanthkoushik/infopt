@@ -1,17 +1,17 @@
 """optimization.py: gpyopt wrappers for optimization."""
 
-from functools import partial
 import logging
 import time
+from functools import partial
 
+import numpy as np
+import torch
 from GPyOpt.core.task import SingleObjective
 from GPyOpt.experiment_design import initial_design, RandomDesign
 from GPyOpt.methods import ModularBayesianOptimization
 from GPyOpt.optimization import AcquisitionOptimizer
 from GPyOpt.optimization.acquisition_optimizer import ContextManager
 from GPyOpt.optimization.optimizer import apply_optimizer, choose_optimizer
-import numpy as np
-import torch
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import trange
@@ -129,7 +129,7 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
             logging.info(f"Set initial exploration weight to {init_exp_w:.3g}")
     elif hasattr(acq, "jitter"):
         acq.jitter = 0
-        logging.info(f"Set jitter to 0")
+        logging.info("Set jitter to 0")
 
     if fun.fmin is not None:
         logging.info(f"f*={fun.fmin:.3g}")

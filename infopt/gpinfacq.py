@@ -3,8 +3,8 @@
 from collections.abc import Iterator
 from contextlib import AbstractContextManager
 
-from GPyOpt.acquisitions.base import AcquisitionBase
 import numpy as np
+from GPyOpt.acquisitions.base import AcquisitionBase
 
 
 class GPInfAcq(AcquisitionBase):

@@ -1,8 +1,8 @@
 """exp_hyp_optim.py: test algorithms for hyper-parameter optimization."""
 
-from abc import ABCMeta, abstractmethod
 import logging
 import pickle
+from abc import ABCMeta, abstractmethod
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -14,14 +14,14 @@ from shinyutils import (
     shiny_arg_parser as arg_parser,
 )
 
-from GPyOpt import Design_space
 import numpy as np
+import torch
+from GPyOpt import Design_space
 from sklearn.datasets import fetch_california_housing
 from sklearn.linear_model import Lasso
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVR
-import torch
 from torchvision.datasets import CIFAR10
 from torchvision.transforms import ToTensor
 
@@ -97,7 +97,7 @@ def run(args):
     else:
         acq_fast_project = obj.project
         if acq_fast_project is None:
-            logging.info(f"using default projection")
+            logging.info("using default projection")
         else:
             logging.info(f"using fast project {acq_fast_project}")
         base_model = FCNet(obj.n, args.layer_sizes).to(DEVICE)

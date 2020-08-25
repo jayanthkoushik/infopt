@@ -1,10 +1,10 @@
 """nnmodel.py: neural network model for GPyOpt."""
 import random
 
-from GPyOpt.models.base import BOModel
 import numpy as np
 import torch
 import torch.nn.functional as F
+from GPyOpt.models.base import BOModel
 
 
 class NNModel(BOModel):

@@ -1,7 +1,7 @@
 """ihvp.py: inverse Hessian-vector product for neural nets."""
 
-from abc import ABC, abstractmethod
 import random
+from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
@@ -99,6 +99,7 @@ class LowRankIHVP(BaseIHVP):
             y = [h @ fc.weight for fc in self.fcs]
             return y
 
+    # pylint: disable=dangerous-default-value
     def __init__(
         self,
         params,

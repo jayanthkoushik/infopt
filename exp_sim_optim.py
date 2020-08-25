@@ -1,13 +1,13 @@
 """exp_sim_optim.py: test various optimizers on standard functions."""
 
-from contextlib import redirect_stdout
-from functools import wraps
-from glob import glob
 import logging
-from math import pi as π
 import os
 import pickle
 import sys
+from contextlib import redirect_stdout
+from functools import wraps
+from glob import glob
+from math import pi as π
 from uuid import uuid4
 
 # Must be imported before GPy to configure matplotlib
@@ -16,12 +16,15 @@ from shinyutils import (
     comma_separated_ints,
     KeyValuePairsType,
     LazyHelpFormatter,
-    MatWrap as mw,
     OutputFileType,
     shiny_arg_parser as arg_parser,
 )
+from shinyutils.matwrap import MatWrap as mw
 
 import GPyOpt
+import numpy as np
+import pandas as pd
+import trains
 from GPyOpt import Design_space
 from GPyOpt.objective_examples.experiments1d import forrester
 from GPyOpt.objective_examples.experiments2d import (
@@ -32,13 +35,10 @@ from GPyOpt.objective_examples.experiments2d import (
     sixhumpcamel,
 )
 from GPyOpt.objective_examples.experimentsNd import ackley, alpine1, alpine2
-import numpy as np
-import pandas as pd
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from torch.nn.modules.loss import _Loss, MSELoss
 from torch.optim import Adam, Optimizer
-import trains
 
 from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
 from exputils.optimization import optimize_nn_offline, run_optim
@@ -221,7 +221,7 @@ def run(args):
             logging.info(f"using fast project with bounds {b0}")
             acq_fast_project = lambda x: x.clamp_(*b0)
         else:
-            logging.info(f"using default projection")
+            logging.info("using default projection")
             acq_fast_project = None
         base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
         logging.debug(base_model)

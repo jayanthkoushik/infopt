@@ -5,14 +5,14 @@ a particular number. Treating the function from image space to this output
 as a black-box function, find the image that maximizes the output.
 """
 
-from argparse import FileType
-from glob import glob
 import itertools
 import logging
 import os
 import pickle
 import random
 import re
+from argparse import FileType
+from glob import glob
 from uuid import uuid4
 
 # Must be imported before GPy to configure matplotlib
@@ -26,17 +26,17 @@ from shinyutils import (
 
 import GPyOpt
 import pandas as pd
-from skimage.io import imsave
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms as transforms
+import trains
+from skimage.io import imsave
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import MNIST
-import torchvision.transforms as transforms
 from tqdm import trange
-import trains
 
 from exputils.models import DEVICE, model_gp, model_nn_inf
 from exputils.optimization import run_optim
@@ -183,7 +183,7 @@ def main():
 
 def run(args):
     if args.neuron is None:
-        logging.info(f"randomly choosing target neuron")
+        logging.info("randomly choosing target neuron")
         args.neuron = random.choice(range(NUM_CLASSES))
     logging.info(f"using target neuron {args.neuron}")
 
@@ -217,7 +217,7 @@ def run(args):
         imsave(imsave_path, optim_img.cpu().numpy())
         logging.info(f"saved result of objective optimization to {imsave_path}")
     else:
-        logging.warning(f"skipping optimization of objective network")
+        logging.warning("skipping optimization of objective network")
 
     if not args.mname:
         return
@@ -237,7 +237,7 @@ def run(args):
         if args.pretrain:
             pretrain_model_net_bcls(list(net.children())[:-2], net.n_fc, args)
         else:
-            logging.warning(f"skipping pretraining")
+            logging.warning("skipping pretraining")
         bo_model, acq = model_nn_inf(net, space, args, acq_fast_project)
         normalize_Y = False
 

@@ -1,11 +1,11 @@
-from argparse import FileType
-from functools import partial
-from glob import glob
 import logging
 import os
 import pickle
 import re
 import sys
+from argparse import FileType
+from functools import partial
+from glob import glob
 from uuid import uuid4
 
 # Must be imported before GPy to configure matplotlib
@@ -13,10 +13,10 @@ from shinyutils import (
     comma_separated_ints,
     KeyValuePairsType,
     LazyHelpFormatter,
-    MatWrap as mw,
     OutputDirectoryType,
     shiny_arg_parser as arg_parser,
 )
+from shinyutils.matwrap import MatWrap as mw
 
 import GPyOpt
 import numpy as np
@@ -207,7 +207,7 @@ def run(args):
         normalize_Y = False
 
     if not args.mname:
-        logging.warning(f"model not specified: no optimization performed")
+        logging.warning("model not specified: no optimization performed")
         result = dict()
     else:
         result = run_optim(obj, space, model, acq, normalize_Y, args)
