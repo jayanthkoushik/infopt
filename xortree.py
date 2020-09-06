@@ -91,9 +91,9 @@ def run(args):
         nn_model = nn.Sequential(
             nn.Linear(2 ** args.nbits, 8),
             nn.Tanh(),
-            nn.Linear(8, 4),
+            nn.Linear(8, 8),
             nn.Tanh(),
-            nn.Linear(4, 1),
+            nn.Linear(8, 1),
             nn.ReLU(),
         ).to(DEVICE)
         ihvp = LowRankIHVP(
@@ -121,7 +121,7 @@ def run(args):
             bo_space,
             exploration_weight=2,
             optim_cls=optim.Adam,
-            optim_kwargs={"lr": 0.01},
+            optim_kwargs={"lr": 0.05},
             optim_iters=1000,
             reinit_optim_start=True,
             lr_decay_step_size=100,
