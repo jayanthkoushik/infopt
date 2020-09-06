@@ -140,15 +140,12 @@ def run(args):
         normalize_Y=normalize_Y,
     )
 
-    for _ in range(args.iters):
+    for i in range(args.iters):
         bo_problem.run_optimization(max_iter=1, verbosity=False)
         err = float(min(bo_problem.Y))
         if args.res_file:
             print(err, file=args.res_file)
-        print(
-            f"CE: {float(bo_problem.Y[-1]):0.3g}, "
-            f"predictions: {[f'{x:0.3g}' for x in bo_problem.X[-1]]}"
-        )
+        print(f"({i+1}/{args.iters}) CE: {float(bo_problem.Y[-1]):.3g}")
 
 
 if __name__ == "__main__":
