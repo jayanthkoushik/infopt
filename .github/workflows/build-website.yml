@@ -8,6 +8,7 @@ on:
     - 'paper/*'
     - '!paper/main.pdf'
     - '.github/workflows/build-website.yml'
+  workflow_dispatch:
 
 jobs:
   build:
