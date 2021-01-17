@@ -115,3 +115,57 @@ class FCNet(nn.Module):
         x = torch.tanh(self.fc_last(x))
         x = self.scale(x)
         return x
+
+
+class NRNet(nn.Module):
+    def __init__(self, num_layers, in_dim, hidden_dim, nonlin=torch.relu, init_as_design=True, as_orig=False):
+        """Neural network for NeuralUCB & variants.
+
+        init_as_design: If True, initialize weights as per the paper.
+        as_orig: If True, add multiplication by `sqrt(m)` at the end as per the paper.
+        """
+        super().__init__()
+        self.in_dim = in_dim
+        self.hidden_dim = hidden_dim
+        self.as_orig = as_orig
+
+        layer_sizes = [in_dim] + [hidden_dim for _ in range(num_layers-1)]
+        self.layers = []
+        for i, (ls, ls_n) in enumerate(zip(layer_sizes, layer_sizes[1:])):
+            self.layers.append(nn.Linear(ls, ls_n, bias=False))
+            setattr(self, f"fc_{i}", self.layers[-1])
+        self.layers.append(nn.Linear(layer_sizes[-1], 1, bias=False))
+        setattr(self, f"fc_{num_layers-1}", self.layers[-1])
+        self.nonlin = nonlin
+
+        if init_as_design:
+            self._init_weights()
+
+    def forward(self, x):
+        for layer in self.layers[:-1]:
+            x = self.nonlin(layer(x))
+        x = self.layers[-1](x)
+        if self.as_orig:
+            x *= torch.sqrt(torch.tensor(self.hidden_dim).float())
+        return x
+
+    def _init_weights(self):
+        """Initialize weights as specified in the paper."""
+        def _fill(h, w):
+            h_half = h // 2
+            w_half = w // 2
+            if h > 1:
+                out = torch.zeros(h, w)
+                W = torch.randn(h_half,w_half).float() * torch.sqrt(torch.tensor(4./w))
+                out[:h_half, :w_half] = W
+                out[h_half:, w_half:] = W
+                return out
+            else:
+                out = torch.zeros(w)
+                W = torch.randn(w_half).float() * torch.sqrt(torch.tensor(2./w))
+                out[:w_half] = W
+                out[w_half:] = -W
+                return torch.unsqueeze(out, 0)
+
+        for layer in self.layers:
+            layer.weight.data = _fill(*layer.weight.data.shape)
