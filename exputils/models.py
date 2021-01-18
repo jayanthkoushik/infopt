@@ -130,18 +130,21 @@ class NRNet(nn.Module):
         self.in_dim = in_dim
         self.hidden_dim = hidden_dim
         self.as_orig = as_orig
+        out_dim = 1
 
-        layer_sizes = [in_dim] + [hidden_dim for _ in range(num_layers-1)]
+        # Create FC layers of network
+        layer_sizes = [in_dim] + [hidden_dim for _ in range(num_layers-1)] + [out_dim]
         self.layers = []
-        for i, (ls, ls_n) in enumerate(zip(layer_sizes, layer_sizes[1:])):
+        for i, (ls, ls_n) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
             self.layers.append(nn.Linear(ls, ls_n, bias=False))
             setattr(self, f"fc_{i}", self.layers[-1])
-        self.layers.append(nn.Linear(layer_sizes[-1], 1, bias=False))
-        setattr(self, f"fc_{num_layers-1}", self.layers[-1])
         self.nonlin = nonlin
 
         if init_as_design:
             self._init_weights()
+
+        # Store a copy of the initial weights
+        self.weights_0 = [l.weight.detach() for l in self.layers]
 
     def forward(self, x):
         for layer in self.layers[:-1]:
