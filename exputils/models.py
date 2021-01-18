@@ -125,6 +125,8 @@ class NRNet(nn.Module):
         as_orig: If True, add multiplication by `sqrt(m)` at the end as per the paper.
         """
         super().__init__()
+        assert not init_as_design or hidden_dim % 2 == 0, \
+            "'hidden_dim' must be an even number to init weights as in paper"
         self.in_dim = in_dim
         self.hidden_dim = hidden_dim
         self.as_orig = as_orig
@@ -154,18 +156,22 @@ class NRNet(nn.Module):
         def _fill(h, w):
             h_half = h // 2
             w_half = w // 2
-            if h > 1:
+            if h > 1 and w > 1:
                 out = torch.zeros(h, w)
                 W = torch.randn(h_half,w_half).float() * torch.sqrt(torch.tensor(4./w))
                 out[:h_half, :w_half] = W
                 out[h_half:, w_half:] = W
                 return out
+            elif h == 1 and w == 1:
+                return torch.randn(h, w).float()
             else:
-                out = torch.zeros(w)
-                W = torch.randn(w_half).float() * torch.sqrt(torch.tensor(2./w))
-                out[:w_half] = W
-                out[w_half:] = -W
-                return torch.unsqueeze(out, 0)
+                l = max(h, w)
+                l_half = l // 2
+                out = torch.zeros(l)
+                W = torch.randn(l_half).float() * torch.sqrt(torch.tensor(2./l))
+                out[:l_half] = W
+                out[l_half:] = -W
+                return out.reshape(h, w)
 
         for layer in self.layers:
             layer.weight.data = _fill(*layer.weight.data.shape)
