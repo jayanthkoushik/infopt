@@ -169,6 +169,7 @@ class NNModel(BOModel):
         S = np.array(S)[:, np.newaxis]
         dM = torch.cat(dM).detach().cpu().numpy()
         dS = torch.cat(dS).detach().cpu().numpy()
+        return M, S, dM, dS
 
     def get_fmin(self):
         raise NotImplementedError
