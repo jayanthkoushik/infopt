@@ -166,14 +166,24 @@ class NRNet(nn.Module):
 
     def _init_weights(self):
         """Initialize weights as specified in the paper."""
-        def _fill(h, w):
+        def _fill(h, w=None):
             h_half = h // 2
-            w_half = w // 2
-            if h > 1 and w > 1:
+            w_half = w // 2 if w is not None else None
+            if w is None:
+                if h == 1:
+                    return torch.randn(h,).float()
+                l = h
+                l_half = l // 2
+                out = torch.zeros(l)
+                W = torch.randn(l_half).float() * torch.sqrt(torch.tensor(2./l))
+                out[:l_half] = W.detach().clone()
+                out[l_half:] = -W.detach().clone()
+                return out
+            elif h > 1 and w > 1:
                 out = torch.zeros(h, w)
                 W = torch.randn(h_half,w_half).float() * torch.sqrt(torch.tensor(4./w))
-                out[:h_half, :w_half] = W
-                out[h_half:, w_half:] = W
+                out[:h_half, :w_half] = W.detach().clone()
+                out[h_half:, w_half:] = W.detach().clone()
                 return out
             elif h == 1 and w == 1:
                 return torch.randn(h, w).float()
@@ -182,8 +192,8 @@ class NRNet(nn.Module):
                 l_half = l // 2
                 out = torch.zeros(l)
                 W = torch.randn(l_half).float() * torch.sqrt(torch.tensor(2./l))
-                out[:l_half] = W
-                out[l_half:] = -W
+                out[:l_half] = W.detach().clone()
+                out[l_half:] = -W.detach().clone()
                 return out.reshape(h, w)
 
         for param in self.parameters():
