@@ -118,11 +118,21 @@ class FCNet(nn.Module):
 
 
 class NRNet(nn.Module):
-    def __init__(self, num_layers, in_dim, hidden_dim, nonlin=torch.relu, init_as_design=True, as_orig=False):
+    def __init__(
+        self,
+        num_layers,
+        in_dim,
+        hidden_dim,
+        nonlin=torch.relu,
+        init_as_design=True,
+        as_orig=False,
+        has_bias=False,
+    ):
         """Neural network for NeuralUCB & variants.
 
-        init_as_design: If True, initialize weights as per the paper.
-        as_orig: If True, add multiplication by `sqrt(m)` at the end as per the paper.
+        init_as_design: If True, initialize weights as per the paper
+        as_orig: If True, add multiplication by `sqrt(m)` at the end as per the paper
+        has_bias: Whether the FC layers should have trainable bias terms
         """
         super().__init__()
         assert not init_as_design or hidden_dim % 2 == 0, \
@@ -136,7 +146,7 @@ class NRNet(nn.Module):
         layer_sizes = [in_dim] + [hidden_dim for _ in range(num_layers-1)] + [out_dim]
         self.layers = []
         for i, (ls, ls_n) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
-            self.layers.append(nn.Linear(ls, ls_n, bias=False))
+            self.layers.append(nn.Linear(ls, ls_n, bias=has_bias))
             setattr(self, f"fc_{i}", self.layers[-1])
         self.nonlin = nonlin
 
@@ -144,7 +154,7 @@ class NRNet(nn.Module):
             self._init_weights()
 
         # Store a copy of the initial weights
-        self.weights_0 = [l.weight.detach() for l in self.layers]
+        self.params_0 = [param.detach() for param in self.parameters()]
 
     def forward(self, x):
         for layer in self.layers[:-1]:
@@ -176,5 +186,5 @@ class NRNet(nn.Module):
                 out[l_half:] = -W
                 return out.reshape(h, w)
 
-        for layer in self.layers:
-            layer.weight.data = _fill(*layer.weight.data.shape)
+        for param in self.parameters():
+            param.data = _fill(*param.data.shape)
