@@ -13,6 +13,7 @@ from infopt.gpinfacq_mcmc import GPInfAcq_MCMC
 from infopt.ihvp import LowRankIHVP
 from infopt.nnacq import NNAcq
 from infopt.nnmodel import NNModel
+from infopt.nrmodel import NRModel
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
@@ -23,35 +24,48 @@ else:
 def model_nn_inf(base_model, space, args, acq_fast_project=None):
     """Neural network model with influence acquisition."""
     # Returns (model, acq).
-    ihvp = LowRankIHVP(
-        base_model.parameters(),
-        args.ihvp_rank,
-        args.ihvp_batch_size,
-        args.ihvp_iters_per_point,
-        args.ihvp_loss_cls(),
-        args.ihvp_optim_cls,
-        args.ihvp_optim_params,
-        args.ihvp_ckpt_every,
-        DEVICE,
-        args.tb_writer,
-    )
-
     bo_model_optim = args.bom_optim_cls(
         base_model.parameters(), **args.bom_optim_params
     )
-    bo_model = NNModel(
-        base_model,
-        ihvp,
-        bo_model_optim,
-        args.bom_loss_cls(),
-        args.bom_up_batch_size,
-        args.bom_up_iters_per_point,
-        args.bom_n_higs,
-        args.bom_ihvp_n,
-        args.bom_ckpt_every,
-        DEVICE,
-        args.tb_writer,
-    )
+    if isinstance(base_model, NRNet):
+        bo_model = NRModel(
+            base_model,
+            0.01,
+            bo_model_optim,
+            args.bom_loss_cls(),
+            args.bom_up_batch_size,
+            args.bom_up_iters_per_point,
+            args.bom_ckpt_every,
+            DEVICE,
+            args.tb_writer,
+        )
+    else:
+        ihvp = LowRankIHVP(
+            base_model.parameters(),
+            args.ihvp_rank,
+            args.ihvp_batch_size,
+            args.ihvp_iters_per_point,
+            args.ihvp_loss_cls(),
+            args.ihvp_optim_cls,
+            args.ihvp_optim_params,
+            args.ihvp_ckpt_every,
+            DEVICE,
+            args.tb_writer,
+        )
+
+        bo_model = NNModel(
+            base_model,
+            ihvp,
+            bo_model_optim,
+            args.bom_loss_cls(),
+            args.bom_up_batch_size,
+            args.bom_up_iters_per_point,
+            args.bom_n_higs,
+            args.bom_ihvp_n,
+            args.bom_ckpt_every,
+            DEVICE,
+            args.tb_writer,
+        )
 
     acq = NNAcq(
         bo_model,

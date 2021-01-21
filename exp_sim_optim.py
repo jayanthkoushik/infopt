@@ -40,7 +40,7 @@ from sklearn.gaussian_process.kernels import RBF
 from torch.nn.modules.loss import _Loss, MSELoss
 from torch.optim import Adam, Optimizer
 
-from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
+from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf, NRNet
 from exputils.optimization import optimize_nn_offline, run_optim
 from exputils.parsing import (
     make_gp_parser,
@@ -223,7 +223,8 @@ def run(args):
         else:
             logging.info("using default projection")
             acq_fast_project = None
-        base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
+        #base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
+        base_model = NRNet(len(args.layer_sizes), args.fdim, np.min(args.layer_sizes)).to(DEVICE)
         logging.debug(base_model)
         model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
         normalize_Y = False
@@ -258,6 +259,7 @@ def run(args):
     result["args"] = vars(args)
     result["mu_mins"] = mu_mins
     result["sig_mins"] = sig_mins
+
     pickle.dump(result, save_file.buffer)
 
 
