@@ -9,7 +9,7 @@ from glob import glob
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
-    comma_separated_ints,
+    CommaSeparatedInts,
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputDirectoryType,
@@ -50,7 +50,7 @@ def main():
     obj_parser.add_argument("--obj-in-dim", type=int, default=1, required=True)
     obj_parser.add_argument(
         "--obj-layer-sizes",
-        type=comma_separated_ints,
+        type=CommaSeparatedInts(),
         required=True,
         metavar="int,int[,...]",
     )
@@ -95,7 +95,7 @@ def main():
     nninf_parser = run_sub_parsers.add_parser("nn", formatter_class=LazyHelpFormatter)
     nninf_parser.add_argument(
         "--model-layer-sizes",
-        type=comma_separated_ints,
+        type=CommaSeparatedInts(),
         required=True,
         metavar="int,int[,...]",
     )

@@ -12,7 +12,7 @@ from math import pi as π
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
     ClassType,
-    comma_separated_ints,
+    CommaSeparatedInts,
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputFileType,
@@ -82,7 +82,7 @@ def main():
     nninf_parser = run_sub_parsers.add_parser("nn", formatter_class=LazyHelpFormatter)
     nninf_parser.add_argument(
         "--layer-sizes",
-        type=comma_separated_ints,
+        type=CommaSeparatedInts(),
         required=True,
         metavar="int,int[,...]",
     )
