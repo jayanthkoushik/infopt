@@ -32,3 +32,9 @@ repos:
     files: paper/
     entry: .githooks/buildpdf.sh
     language: script
+  - id: mypy
+    name: mypy
+    entry: poetry run mypy --ignore-missing-imports .
+    language: system
+    types: [python]
+    pass_filenames: false

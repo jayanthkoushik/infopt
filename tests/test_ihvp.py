@@ -3,6 +3,7 @@
 import shutil
 import sys
 import unittest
+from typing import Optional
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -16,6 +17,7 @@ if torch.cuda.is_available():
 else:
     DEVICE = torch.device("cpu")
 
+TB_WRITER: Optional[SummaryWriter]
 if sys.gettrace():
     tb_log_dir = "logs/test_ihvp"
     try:
