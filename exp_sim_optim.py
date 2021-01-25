@@ -8,7 +8,6 @@ from contextlib import redirect_stdout
 from functools import wraps
 from glob import glob
 from math import pi as π
-from uuid import uuid4
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -24,7 +23,6 @@ from shinyutils.matwrap import MatWrap as mw
 import GPyOpt
 import numpy as np
 import pandas as pd
-import trains
 from GPyOpt import Design_space
 from GPyOpt.objective_examples.experiments1d import forrester
 from GPyOpt.objective_examples.experiments2d import (
@@ -59,9 +57,6 @@ def main():
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
     run_parser.set_defaults(func=run)
-    run_parser.add_argument(
-        "--no-trains", action="store_false", dest="trains", default=True
-    )
     run_parser.add_argument("--suppress-stdout", action="store_true")
     run_parser.add_argument("--save-file", type=OutputFileType(), required=True)
     run_parser.add_argument(
@@ -165,15 +160,6 @@ def main():
 
 
 def run(args):
-    if args.trains:
-        task_name = f"[{str(uuid4())[:8]}] {args.fname}: {args.mname}"
-        if args.mname == "gp":
-            task_name += f"-{args.acq_type}"
-
-        trains.Task.init(project_name="inf-opt sim_optim", task_name=task_name)
-    else:
-        logging.warning("trains logging not enabled")
-
     funf = FS[args.fname]
     try:
         fun = funf(args.fdim)

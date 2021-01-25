@@ -13,7 +13,6 @@ import random
 import re
 from argparse import FileType
 from glob import glob
-from uuid import uuid4
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -30,7 +29,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-import trains
 from skimage.io import imsave
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import StepLR
@@ -62,9 +60,6 @@ def main():
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
     run_parser.set_defaults(func=run)
-    run_parser.add_argument(
-        "--no-trains", action="store_false", dest="trains", default=True
-    )
     run_parser.add_argument(
         "--neuron",
         type=int,
@@ -186,20 +181,6 @@ def run(args):
         logging.info("randomly choosing target neuron")
         args.neuron = random.choice(range(NUM_CLASSES))
     logging.info(f"using target neuron {args.neuron}")
-
-    if args.mname and args.trains:
-        task_name = f"[{str(uuid4())[:8]}] neuron {args.neuron}: {args.mname}"
-        if args.mname == "nn":
-            if args.pretrain:
-                task_name += f" (pre {args.pretrain_t1} vs. {args.pretrain_t2})"
-            else:
-                task_name += " (no pre)"
-        else:
-            task_name += f"-{args.acq_type}"
-
-        trains.Task.init(project_name="inf-opt neuron_optim_mnist", task_name=task_name)
-    else:
-        logging.warning("trains logging not enabled")
 
     obj = NeuronObjective(args)
 

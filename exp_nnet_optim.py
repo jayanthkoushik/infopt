@@ -6,7 +6,6 @@ import sys
 from argparse import FileType
 from functools import partial
 from glob import glob
-from uuid import uuid4
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -22,7 +21,6 @@ import GPyOpt
 import numpy as np
 import torch
 import torch.nn.init as init
-import trains
 
 from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
 from exputils.optimization import run_optim
@@ -43,9 +41,6 @@ def main():
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
     run_parser.set_defaults(func=run)
-    run_parser.add_argument(
-        "--no-trains", action="store_false", dest="trains", default=True
-    )
     run_parser.add_argument("--save-dir", type=OutputDirectoryType(), required=True)
     run_parser.add_argument(
         "--tb-dir", type=TensorboardWriterType(), dest="tb_writer", default=None
@@ -133,16 +128,6 @@ def main():
 
 
 def run(args):
-    if args.trains:
-        fstr = f"{args.obj_in_dim},{','.join(args.obj_layer_sizes)}"
-        task_name = f"[{str(uuid4())[:8]}] {fstr}: {args.mname}"
-        if args.mname == "gp":
-            task_name += f"-{args.acq_type}"
-
-        trains.Task.init(project_name="inf-opt nnet_optim", task_name=task_name)
-    else:
-        logging.warning("trains logging not enabled")
-
     if args.load_target is not None:
         logging.info(f"loading target from `{args.load_target}`")
         tnet = FCNet(args.obj_in_dim, args.obj_layer_sizes).to(DEVICE)
