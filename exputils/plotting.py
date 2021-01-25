@@ -24,6 +24,10 @@ def load_save_data(res_dir, skip_pats):
 
         mname = res["args"]["mname"].upper()
         if mname == "NN":
+            if res["args"]["use_nr"]:
+                mname = "NRO" if res["args"]["nr_original"] else "NR"
+            elif res["args"]["use_nrif"]:
+                mname = "NRIF"
             acq_type = "INF"
         else:
             if res["args"]["mcmc"]:
