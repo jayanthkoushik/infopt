@@ -91,6 +91,27 @@ def main():
         required=True,
         metavar="int,int[,...]",
     )
+    nninf_parser.add_argument(
+        "--use-nr",
+        action="store_true",
+        help="Set to True to use NeuralUCB"
+    )
+    nninf_parser.add_argument(
+        "--use-nrif",
+        action="store_true",
+        help="Set to True to use IF-variant of NeuralUCB"
+    )
+    nninf_parser.add_argument(
+        "--nr-original",
+        action="store_true",
+        help="Set to True to use original design of NeuralUCB NN"
+    )
+    nninf_parser.add_argument(
+        "--nr-lda",
+        type=float,
+        default=1e-2,
+        help="Lambda value for NeuralUCB & variants"
+    )
     make_nninf_parser(nninf_parser)
 
     run_offnn_parser = sub_parsers.add_parser(
@@ -223,8 +244,13 @@ def run(args):
         else:
             logging.info("using default projection")
             acq_fast_project = None
-        #base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
-        base_model = NRNet(len(args.layer_sizes), args.fdim, np.min(args.layer_sizes)).to(DEVICE)
+
+        if args.use_nr or args.use_nrif:
+            base_model = NRNet(len(args.layer_sizes), args.fdim, np.min(args.layer_sizes),
+                               as_orig=args.nr_original).to(DEVICE)
+        else:
+            base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
+
         logging.debug(base_model)
         model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
         normalize_Y = False

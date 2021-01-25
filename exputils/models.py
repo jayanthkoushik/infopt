@@ -13,7 +13,7 @@ from infopt.gpinfacq_mcmc import GPInfAcq_MCMC
 from infopt.ihvp import LowRankIHVP
 from infopt.nnacq import NNAcq
 from infopt.nnmodel import NNModel
-from infopt.nrmodel import NRModel
+from infopt.nrmodel import NRModel, NRIFModel
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
@@ -28,9 +28,15 @@ def model_nn_inf(base_model, space, args, acq_fast_project=None):
         base_model.parameters(), **args.bom_optim_params
     )
     if isinstance(base_model, NRNet):
-        bo_model = NRModel(
+        if args.use_nr:
+            nr_model_cls = NRModel
+        elif args.use_nrif:
+            nr_model_cls = NRIFModel
+        else: raise ValueError("Given base_model is NRNet but neither 'use_nr' nor 'use_nrif' specified")
+
+        bo_model = nr_model_cls(
             base_model,
-            0.01,
+            args.nr_lda,
             bo_model_optim,
             args.bom_loss_cls(),
             args.bom_up_batch_size,
