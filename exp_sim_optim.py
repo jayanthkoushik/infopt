@@ -7,7 +7,7 @@ import sys
 from contextlib import redirect_stdout
 from functools import wraps
 from glob import glob
-from math import pi as π
+from math import pi
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -349,7 +349,7 @@ class rastrigin:
     def f(self, X):
         X = GPyOpt.util.general.reshape(X, self.input_dim)
         return self.A + np.mean(
-            X ** 2 - self.A * np.cos(2 * π * X), axis=1, keepdims=True
+            X ** 2 - self.A * np.cos(2 * pi * X), axis=1, keepdims=True
         )
 
 
@@ -393,11 +393,11 @@ class branin:
         self,
         n,
         a=1.0,
-        b=(5.1 / (4 * π * π)),
-        c=(5 / π),
+        b=(5.1 / (4 * pi * pi)),
+        c=(5 / pi),
         r=6,
         s=10,
-        t=(1 / (8 * π)),
+        t=(1 / (8 * pi)),
         scale=0.1,
     ):
         if n != 2:
