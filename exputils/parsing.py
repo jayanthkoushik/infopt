@@ -12,6 +12,7 @@ from shinyutils import (
     OutputDirectoryType,
     OutputFileType,
 )
+from shinyutils.matwrap import MatWrap as mw
 
 from GPyOpt.core.evaluators import Sequential
 from GPyOpt.core.evaluators.base import EvaluatorBase
@@ -130,23 +131,15 @@ def make_plot_parser(parser):
     """Add common plotting options."""
     mode_parser = parser.add_mutually_exclusive_group(required=True)
     mode_parser.add_argument("--save-file", type=OutputFileType())
-    mode_parser.add_argument("--interactive", action="store_true")
+    mode_parser.add_argument(
+        "--interactive",
+        help="launch in interactive mode (mutually exclusive with --save-file)",
+        action="store_true",
+    )
+
+    mw.add_parser_config_args(parser)
 
     parser.add_argument("--res-dir", type=str, required=True)
-    parser.add_argument(
-        "--context",
-        type=str,
-        choices=["paper", "notebook", "talk", "poster"],
-        default="paper",
-    )
-    parser.add_argument(
-        "--style",
-        type=str,
-        choices=["white", "dark", "whitegrid", "darkgrid", "ticks"],
-        default="ticks",
-    )
-    parser.add_argument("--font", type=str, default="Latin Modern Roman")
-    parser.add_argument("--fig-size", type=float, nargs=2, default=[5, 4])
     parser.add_argument(
         "--skip-pats",
         type=str,
