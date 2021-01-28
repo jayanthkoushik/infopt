@@ -11,11 +11,11 @@ from shinyutils import (
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputFileType,
-    shiny_arg_parser as arg_parser,
 )
 
 import numpy as np
 import torch
+from clearml import Task as ClearMLTask
 from GPyOpt import Design_space
 from sklearn.datasets import fetch_california_housing
 from sklearn.linear_model import Lasso
@@ -28,6 +28,7 @@ from torchvision.transforms import ToTensor
 from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
 from exputils.optimization import run_optim
 from exputils.parsing import (
+    base_arg_parser,
     make_gp_parser,
     make_nninf_parser,
     make_optim_parser,
@@ -37,7 +38,7 @@ from exputils.parsing import (
 
 def main():
     """Entry point."""
-    sub_parsers = arg_parser.add_subparsers(dest="cmd")
+    sub_parsers = base_arg_parser.add_subparsers(dest="cmd")
     sub_parsers.required = True
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
@@ -82,7 +83,12 @@ def main():
     )
     make_nninf_parser(nninf_parser)
 
-    args = arg_parser.parse_args()
+    args = base_arg_parser.parse_args()
+    if args.clearml_task:
+        ClearMLTask.init(project_name="infopt_hyp_optim", task_name=args.clearml_task)
+        logging.info(
+            f"clearml logging enabled under 'infopt_hyp_optim/{args.clearml_task}'"
+        )
     args.func(args)
 
 

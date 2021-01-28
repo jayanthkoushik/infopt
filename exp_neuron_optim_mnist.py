@@ -20,7 +20,6 @@ from shinyutils import (
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputDirectoryType,
-    shiny_arg_parser as arg_parser,
 )
 
 import GPyOpt
@@ -29,6 +28,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+from clearml import Task as ClearMLTask
 from skimage.io import imsave
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import StepLR
@@ -39,6 +39,7 @@ from tqdm import trange
 from exputils.models import DEVICE, model_gp, model_nn_inf
 from exputils.optimization import run_optim
 from exputils.parsing import (
+    base_arg_parser,
     make_gp_parser,
     make_nninf_parser,
     make_optim_parser,
@@ -55,7 +56,7 @@ DOMAIN = (-1, 1)
 
 def main():
     """Entry point."""
-    sub_parsers = arg_parser.add_subparsers(dest="cmd")
+    sub_parsers = base_arg_parser.add_subparsers(dest="cmd")
     sub_parsers.required = True
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
@@ -172,7 +173,15 @@ def main():
     plotr_parser.set_defaults(func=plot_ys)
     make_plot_parser(plotr_parser)
 
-    args = arg_parser.parse_args()
+    args = base_arg_parser.parse_args()
+    if args.clearml_task:
+        ClearMLTask.init(
+            project_name="infopt_neuron_optim_mnist", task_name=args.clearml_task
+        )
+        logging.info(
+            f"clearml logging enabled under "
+            f"'infopt_neuron_optim_mnist/{args.clearml_task}'"
+        )
     args.func(args)
 
 

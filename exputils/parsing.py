@@ -1,15 +1,29 @@
 """parsing.py: functions to add argparse arguments for common modules."""
 
+import argparse
 import logging
 
 # Must be imported before GPy to configure matplotlib
-from shinyutils import ClassType, KeyValuePairsType, OutputDirectoryType, OutputFileType
+from shinyutils import (
+    build_log_argp,
+    ClassType,
+    KeyValuePairsType,
+    LazyHelpFormatter,
+    OutputDirectoryType,
+    OutputFileType,
+)
 
 from GPyOpt.core.evaluators import Sequential
 from GPyOpt.core.evaluators.base import EvaluatorBase
 from torch.nn.modules.loss import _Loss, MSELoss
 from torch.optim import Adam, Optimizer
 from torch.utils.tensorboard import SummaryWriter
+
+base_arg_parser = argparse.ArgumentParser(formatter_class=LazyHelpFormatter)
+build_log_argp(base_arg_parser)
+base_arg_parser.add_argument(
+    "--clearml-task", type=str, help="enable clearml logging under given task name",
+)
 
 
 def make_nninf_parser(parser):

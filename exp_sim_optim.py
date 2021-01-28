@@ -16,13 +16,13 @@ from shinyutils import (
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputFileType,
-    shiny_arg_parser as arg_parser,
 )
 from shinyutils.matwrap import MatWrap as mw
 
 import GPyOpt
 import numpy as np
 import pandas as pd
+from clearml import Task as ClearMLTask
 from GPyOpt import Design_space
 from GPyOpt.objective_examples.experiments1d import forrester
 from GPyOpt.objective_examples.experiments2d import (
@@ -41,6 +41,7 @@ from torch.optim import Adam, Optimizer
 from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
 from exputils.optimization import optimize_nn_offline, run_optim
 from exputils.parsing import (
+    base_arg_parser,
     make_gp_parser,
     make_nninf_parser,
     make_optim_parser,
@@ -52,7 +53,7 @@ from exputils.plotting import plot_performance, plot_timing
 
 def main():
     """Entry point."""
-    sub_parsers = arg_parser.add_subparsers(dest="cmd")
+    sub_parsers = base_arg_parser.add_subparsers(dest="cmd")
     sub_parsers.required = True
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
@@ -155,7 +156,12 @@ def main():
     ploto_parser.set_defaults(func=plot_offline_nn)
     make_plot_parser(ploto_parser)
 
-    args = arg_parser.parse_args()
+    args = base_arg_parser.parse_args()
+    if args.clearml_task:
+        ClearMLTask.init(project_name="infopt_sim_optim", task_name=args.clearml_task)
+        logging.info(
+            f"clearml logging enabled under 'infopt_sim_optim/{args.clearml_task}'"
+        )
     args.func(args)
 
 

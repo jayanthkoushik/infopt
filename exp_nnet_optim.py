@@ -13,7 +13,6 @@ from shinyutils import (
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputDirectoryType,
-    shiny_arg_parser as arg_parser,
 )
 from shinyutils.matwrap import MatWrap as mw
 
@@ -21,10 +20,12 @@ import GPyOpt
 import numpy as np
 import torch
 import torch.nn.init as init
+from clearml import Task as ClearMLTask
 
 from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
 from exputils.optimization import run_optim
 from exputils.parsing import (
+    base_arg_parser,
     make_gp_parser,
     make_nninf_parser,
     make_optim_parser,
@@ -36,7 +37,7 @@ from exputils.plotting import plot_performance, plot_timing
 
 def main():
     """Entry point."""
-    sub_parsers = arg_parser.add_subparsers(dest="cmd")
+    sub_parsers = base_arg_parser.add_subparsers(dest="cmd")
     sub_parsers.required = True
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
@@ -123,7 +124,12 @@ def main():
     make_plot_parser(plott_parser)
     plott_parser.add_argument("--model-update-interval", type=int, default=1)
 
-    args = arg_parser.parse_args()
+    args = base_arg_parser.parse_args()
+    if args.clearml_task:
+        ClearMLTask.init(project_name="infopt_nnet_optim", task_name=args.clearml_task)
+        logging.info(
+            f"clearml logging enabled under 'infopt_nnet_optim/{args.clearml_task}'"
+        )
     args.func(args)
 
 
