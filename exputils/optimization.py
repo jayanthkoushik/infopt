@@ -120,16 +120,16 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
             acq.exploration_weight = args.use_const_exp_w
             postfix_dict["exp_w"] = args.use_const_exp_w
             logging.info(
-                f"Using constant exploration weight {args.use_const_exp_w:.3g}"
+                f"using constant exploration weight {args.use_const_exp_w:.3g}"
             )
         else:
             init_exp_w = args.exp_multiplier * (np.log(1 / args.exp_gamma) ** 2)
             acq.exploration_weight = init_exp_w
             postfix_dict["exp_w"] = init_exp_w
-            logging.info(f"Set initial exploration weight to {init_exp_w:.3g}")
+            logging.info(f"set initial exploration weight to {init_exp_w:.3g}")
     elif hasattr(acq, "jitter"):
         acq.jitter = 0
-        logging.info("Set jitter to 0")
+        logging.info("set jitter to 0")
 
     if fun.fmin is not None:
         logging.info(f"f*={fun.fmin:.3g}")

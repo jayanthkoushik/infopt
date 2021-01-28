@@ -79,7 +79,7 @@ def model_gp(space, args):
         model = GPModel_MCMC(exact_feval=args.exact_feval, verbose=False)
     else:
         model = GPModel(exact_feval=args.exact_feval, ARD=args.ard, verbose=False)
-    logging.debug(f"model: {model}")
+    logging.debug(f"model: {model.__class__.__name__}")
 
     if args.acq_type == "inf":
         acq_cls = GPInfAcq_MCMC if args.mcmc else GPInfAcq
@@ -91,7 +91,7 @@ def model_gp(space, args):
 
     acq_optim = SinglePassAcquisitionOptimizer(space)
     acq = acq_cls(model, space, acq_optim)
-    logging.info(f"acquisition: {acq}")
+    logging.info(f"acquisition: {acq_cls.__name__}")
 
     return model, acq
 

@@ -172,7 +172,7 @@ def run(args):
     except RuntimeError as e:
         logging.critical(e)
         sys.exit(1)
-    logging.info(f"target function: {fun}")
+    logging.info(f"target function: {args.fname}-{args.fdim}d")
 
     if args.gaussian_noise_with_scale is not None:
         assert args.gaussian_noise_with_scale > 0
