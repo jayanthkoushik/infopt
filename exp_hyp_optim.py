@@ -30,7 +30,7 @@ from exputils.optimization import run_optim
 from exputils.parsing import (
     base_arg_parser,
     make_gp_parser,
-    make_nninf_parser,
+    make_nn_nr_parser,
     make_optim_parser,
     TensorboardWriterType,
 )
@@ -74,14 +74,17 @@ def main():
     gp_parser = run_sub_parsers.add_parser("gp", formatter_class=LazyHelpFormatter)
     make_gp_parser(gp_parser)
 
-    nninf_parser = run_sub_parsers.add_parser("nn", formatter_class=LazyHelpFormatter)
-    nninf_parser.add_argument(
-        "--layer-sizes",
-        type=CommaSeparatedInts(),
-        required=True,
-        metavar="int,int[,...]",
-    )
-    make_nninf_parser(nninf_parser)
+    for _mname in ["nn", "nr"]:
+        mname_parser = run_sub_parsers.add_parser(
+            _mname, formatter_class=LazyHelpFormatter
+        )
+        mname_parser.add_argument(
+            "--layer-sizes",
+            type=CommaSeparatedInts(),
+            required=True,
+            metavar="int,int[,...]",
+        )
+        make_nn_nr_parser(mname_parser, _mname)
 
     args = base_arg_parser.parse_args()
     if args.clearml_task:

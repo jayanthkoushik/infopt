@@ -27,25 +27,47 @@ base_arg_parser.add_argument(
 )
 
 
-def make_nninf_parser(parser):
-    """Add parser options for nninf."""
-    ihvp_parser = parser.add_argument_group("model low-rank ihvp")
-    ihvp_parser.add_argument("--ihvp-rank", type=int, default=10)
-    ihvp_parser.add_argument("--ihvp-batch-size", type=int, default=8)
-    ihvp_parser.add_argument(
-        "--ihvp-optim-cls", type=ClassType(Optimizer), metavar="optimizer", default=Adam
-    )
-    ihvp_parser.add_argument(
-        "--ihvp-optim-params",
-        type=KeyValuePairsType(),
-        metavar="key=value,[...]",
-        default=dict(lr=0.01),
-    )
-    ihvp_parser.add_argument("--ihvp-ckpt-every", type=int, default=25)
-    ihvp_parser.add_argument("--ihvp-iters-per-point", type=int, default=25)
-    ihvp_parser.add_argument(
-        "--ihvp-loss-cls", type=ClassType(_Loss), metavar="loss", default=MSELoss
-    )
+def make_nn_nr_parser(parser, mname):
+    """Add parser options for nninf/nr."""
+    assert mname == "nn" or mname == "nr"
+    if mname == "nr":
+        nr_parser = parser.add_argument_group("nr")
+        nr_parser.add_argument(
+            "--use-nrif", action="store_true", help="use IF-variant of NeuralUCB"
+        )
+        nr_parser.add_argument(
+            "--use-original-nr",
+            action="store_true",
+            help="use original design of NeuralUCB NN",
+        )
+        nr_parser.add_argument(
+            "--nr-lda",
+            type=float,
+            default=1e-2,
+            help="lambda value for NeuralUCB & variants",
+        )
+
+    if mname == "nn":
+        ihvp_parser = parser.add_argument_group("model low-rank ihvp")
+        ihvp_parser.add_argument("--ihvp-rank", type=int, default=10)
+        ihvp_parser.add_argument("--ihvp-batch-size", type=int, default=8)
+        ihvp_parser.add_argument(
+            "--ihvp-optim-cls",
+            type=ClassType(Optimizer),
+            metavar="optimizer",
+            default=Adam,
+        )
+        ihvp_parser.add_argument(
+            "--ihvp-optim-params",
+            type=KeyValuePairsType(),
+            metavar="key=value,[...]",
+            default=dict(lr=0.01),
+        )
+        ihvp_parser.add_argument("--ihvp-ckpt-every", type=int, default=25)
+        ihvp_parser.add_argument("--ihvp-iters-per-point", type=int, default=25)
+        ihvp_parser.add_argument(
+            "--ihvp-loss-cls", type=ClassType(_Loss), metavar="loss", default=MSELoss
+        )
 
     nn_boparser = parser.add_argument_group("model wrapper for gpyopt")
     nn_boparser.add_argument(

@@ -25,11 +25,20 @@ def load_save_data(res_dir, skip_pats):
         mname = res["args"]["mname"].upper()
         if mname == "NN":
             acq_type = "INF"
-        else:
+        elif mname == "NR":
+            if res["args"]["use_nrif"]:
+                acq_type = "INF"
+            elif res["args"]["use_original_nr"]:
+                acq_type = "ORIG"
+            else:
+                acq_type = ""
+        elif mname == "GP":
             if res["args"]["mcmc"]:
                 mname += " (MCMC)"
             acq_type = res["args"]["acq_type"].upper()
-        mname += f" {acq_type}"
+        else:
+            raise ValueError(f"unknown model type: {mname}")
+        mname = f"{mname} {acq_type}".strip()
 
         init_points = res["args"]["init_points"]
         iters = res["args"]["optim_iters"]

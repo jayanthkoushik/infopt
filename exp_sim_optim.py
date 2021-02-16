@@ -38,12 +38,12 @@ from sklearn.gaussian_process.kernels import RBF
 from torch.nn.modules.loss import _Loss, MSELoss
 from torch.optim import Adam, Optimizer
 
-from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf
+from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf, model_nr, NRNet
 from exputils.optimization import optimize_nn_offline, run_optim
 from exputils.parsing import (
     base_arg_parser,
     make_gp_parser,
-    make_nninf_parser,
+    make_nn_nr_parser,
     make_optim_parser,
     make_plot_parser,
     TensorboardWriterType,
@@ -80,14 +80,17 @@ def main():
     gp_parser = run_sub_parsers.add_parser("gp", formatter_class=LazyHelpFormatter)
     make_gp_parser(gp_parser)
 
-    nninf_parser = run_sub_parsers.add_parser("nn", formatter_class=LazyHelpFormatter)
-    nninf_parser.add_argument(
-        "--layer-sizes",
-        type=CommaSeparatedInts(),
-        required=True,
-        metavar="int,int[,...]",
-    )
-    make_nninf_parser(nninf_parser)
+    for _mname in ["nn", "nr"]:
+        mname_parser = run_sub_parsers.add_parser(
+            _mname, formatter_class=LazyHelpFormatter
+        )
+        mname_parser.add_argument(
+            "--layer-sizes",
+            type=CommaSeparatedInts(),
+            required=True,
+            metavar="int,int[,...]",
+        )
+        make_nn_nr_parser(mname_parser, _mname)
 
     run_offnn_parser = sub_parsers.add_parser(
         "run-offline-nn", formatter_class=LazyHelpFormatter
@@ -215,9 +218,20 @@ def run(args):
         else:
             logging.info("using default projection")
             acq_fast_project = None
-        base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
+
+        if args.mname == "nr":
+            base_model = NRNet(
+                len(args.layer_sizes),
+                args.fdim,
+                np.min(args.layer_sizes),
+                as_orig=args.use_original_nr,
+            ).to(DEVICE)
+            model, acq = model_nr(base_model, space, args, acq_fast_project)
+        else:
+            base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
+            model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
+
         logging.debug(base_model)
-        model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
         normalize_Y = False
 
     mu_mins = []

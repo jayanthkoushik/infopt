@@ -41,7 +41,7 @@ from exputils.optimization import run_optim
 from exputils.parsing import (
     base_arg_parser,
     make_gp_parser,
-    make_nninf_parser,
+    make_nn_nr_parser,
     make_optim_parser,
     make_plot_parser,
     TensorboardWriterType,
@@ -135,7 +135,7 @@ def main():
     make_gp_parser(gp_parser)
 
     nninf_parser = run_sub_parsers.add_parser("nn", formatter_class=LazyHelpFormatter)
-    make_nninf_parser(nninf_parser)
+    make_nn_nr_parser(nninf_parser, "nn")
     nninf_parser.add_argument(
         "--no-pretrain", action="store_false", dest="pretrain", default=True
     )
