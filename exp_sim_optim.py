@@ -7,7 +7,7 @@ import sys
 from contextlib import redirect_stdout
 from functools import wraps
 from glob import glob
-from math import pi
+from math import pi, sqrt
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -33,6 +33,7 @@ from GPyOpt.objective_examples.experiments2d import (
     sixhumpcamel,
 )
 from GPyOpt.objective_examples.experimentsNd import ackley, alpine1, alpine2
+from scipy.linalg import norm
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from torch.nn.modules.loss import _Loss, MSELoss
@@ -72,6 +73,7 @@ def main():
     noise_var_group = noise_parser.add_mutually_exclusive_group(required=False)
     noise_var_group.add_argument("--gaussian-noise-with-scale", type=float)
     noise_var_group.add_argument("--gprbf-noise-with-scale", type=float)
+    noise_var_group.add_argument("--xnorm-gaussian-noise-with-scale", type=float)
 
     run_sub_parsers = run_parser.add_subparsers(dest="mname")
     run_sub_parsers.required = True
@@ -176,19 +178,53 @@ def run(args):
         sys.exit(1)
     logging.info(f"target function: {args.fname}-{args.fdim}d")
 
+    # figure out function range
+    if not hasattr(fun, "range"):
+        if args.fname == "ackley":
+            with redirect_stdout(open(os.devnull, "w")):
+                _urange = fun.f(np.array([[_b[1] for _b in fun.bounds]])).item()
+        elif args.fname == "alpine1":
+            _urange = 11 * args.fdim
+        elif args.fname == "alpine2":
+            _urange = sqrt(10) ** args.fdim
+        elif args.fname == "beale":
+            _urange = fun.f(np.array([[-1, -1]])).item()
+        elif args.fname == "dropwave":
+            _urange = 0
+        elif args.fname == "eggholder":
+            _urange = 1071
+        elif args.fname == "forrester":
+            _urange = 16
+        elif args.fname == "powers":
+            _urange = 2
+        elif args.fname == "sixhumpcamel":
+            _urange = fun.f(np.array([[2, 1]])).item()
+        else:
+            raise AssertionError
+        fun.range = [fun.fmin, _urange]
+    logging.info(f"function range: {fun.range}")
+
+    # Add noise
     if args.gaussian_noise_with_scale is not None:
         assert args.gaussian_noise_with_scale > 0
-        noise_fun = lambda x: np.random.normal(
-            scale=args.gaussian_noise_with_scale, size=(len(x), 1)
-        )
+        _scale = args.gaussian_noise_with_scale * (fun.range[1] - fun.range[0]) / 2
+        noise_fun = GaussianNoise(_scale)
     elif args.gprbf_noise_with_scale is not None:
         assert args.gprbf_noise_with_scale > 0
-        noise_fun = GPNoise(RBF(), args.gprbf_noise_with_scale)
+        _scale = args.gprbf_noise_with_scale * (fun.range[1] - fun.range[0]) / 2
+        noise_fun = GPNoise(RBF(), _scale)
+    elif args.xnorm_gaussian_noise_with_scale is not None:
+        assert args.xnorm_gaussian_noise_with_scale > 0
+        _scale = (
+            args.xnorm_gaussian_noise_with_scale * (fun.range[1] - fun.range[0]) / 2
+        )
+        noise_fun = XScaleNoise(_scale)
     else:
         noise_fun = None
+    logging.info(f"noise: {noise_fun}")
 
     if noise_fun is not None:
-
+        # Decorate fun.f to add noise to its output
         def decorate_with_noise(_f, _noisef):
             @wraps(_f)
             def _wrapper(_x):
@@ -488,12 +524,27 @@ FS = {
 }
 
 
+class GaussianNoise:
+
+    """Gaussian 0-mean noise."""
+
+    def __init__(self, scale):
+        self.scale = scale
+
+    def __call__(self, x):
+        return np.random.normal(scale=self.scale, size=(len(x), 1))
+
+    def __repr__(self):
+        return f"Gaussian(mean=0, std={self.scale:.3g})"
+
+
 class GPNoise:
 
     """Gaussian process noise distribution."""
 
     def __init__(self, kernel, scale):
         self.gp = GaussianProcessRegressor(kernel)
+        self.kernel = kernel
         self.scale = scale
 
     def __call__(self, x):
@@ -501,6 +552,24 @@ class GPNoise:
         noise_mean = np.zeros(len(x))
         noise = np.random.multivariate_normal(noise_mean, noise_cov)
         return noise[:, np.newaxis]
+
+    def __repr__(self):
+        return f"GP(mean=0, kernel={self.kernel}, scale={self.scale:.3g})"
+
+
+class XScaleNoise:
+
+    """Heteroskedastic noise that scales with norm of input."""
+
+    def __init__(self, scale):
+        self.scale = scale
+
+    def __call__(self, x):
+        xscale = self.scale * norm(x, ord=2, axis=-1, keepdims=True)
+        return np.random.normal(scale=xscale)
+
+    def __repr__(self):
+        return f"||x|| * Gaussian(mean=0, std={self.scale:.3g})"
 
 
 if __name__ == "__main__":
