@@ -58,7 +58,6 @@ def main():
 
     run_parser = sub_parsers.add_parser("run", formatter_class=LazyHelpFormatter)
     run_parser.set_defaults(func=run)
-    run_parser.add_argument("--suppress-stdout", action="store_true")
     run_parser.add_argument("--save-file", type=OutputFileType(), required=True)
     run_parser.add_argument(
         "--fname", type=str, required=True, metavar="function", choices=FS
@@ -248,7 +247,8 @@ def run(args):
         postfix_dict["μ*"] = mu_mins[-1]
         postfix_dict["σ*"] = sig_mins[-1]
 
-    if args.suppress_stdout:
+    if args.fname == "ackley":
+        # ackley has a print statement inside -_-
         with redirect_stdout(open(os.devnull, "w")):
             result = run_optim(fun, space, model, acq, normalize_Y, args, eval_hook)
     else:
