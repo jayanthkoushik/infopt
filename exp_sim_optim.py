@@ -487,7 +487,7 @@ def fix_init_input_dim(cls_, fixed_input_dim):
     """Update the __init__ for cls_ to force constant input_dim."""
     cls_._old_init = cls_.__init__
 
-    def _new_init(self, input_dim, bounds=None, sd=None):
+    def _new_init(self, input_dim):
         # pylint: disable=unused-argument
         if input_dim != fixed_input_dim:
             raise RuntimeError(
@@ -495,7 +495,7 @@ def fix_init_input_dim(cls_, fixed_input_dim):
                 f"n={fixed_input_dim} "
                 f"(given n={input_dim})"
             )
-        self._old_init(bounds, sd)
+        self._old_init()
 
     cls_.__init__ = _new_init
 
