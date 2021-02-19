@@ -188,7 +188,7 @@ class NRNet(nn.Module):
             setattr(self, f"fc_{i}", self.layers[-1])
         self.nonlin = nonlin
 
-        if init_as_design:
+        if init_as_design and in_dim % 2 == 0:
             self._init_weights()
 
         # Store a copy of the initial weights
@@ -218,7 +218,8 @@ class NRNet(nn.Module):
                 out[:l_half] = W.detach().clone()
                 out[l_half:] = -W.detach().clone()
                 return out
-            elif h > 1 and w > 1:
+
+            if h > 1 and w > 1:
                 out = torch.zeros(h, w)
                 W = torch.randn(h_half, w_half).float() * torch.sqrt(
                     torch.tensor(4.0 / w)
@@ -226,16 +227,17 @@ class NRNet(nn.Module):
                 out[:h_half, :w_half] = W.detach().clone()
                 out[h_half:, w_half:] = W.detach().clone()
                 return out
-            elif h == 1 and w == 1:
+
+            if h == 1 and w == 1:
                 return torch.randn(h, w).float()
-            else:
-                l = max(h, w)
-                l_half = l // 2
-                out = torch.zeros(l)
-                W = torch.randn(l_half).float() * torch.sqrt(torch.tensor(2.0 / l))
-                out[:l_half] = W.detach().clone()
-                out[l_half:] = -W.detach().clone()
-                return out.reshape(h, w)
+
+            l = max(h, w)
+            l_half = l // 2
+            out = torch.zeros(l)
+            W = torch.randn(l_half).float() * torch.sqrt(torch.tensor(2.0 / l))
+            out[:l_half] = W.detach().clone()
+            out[l_half:] = -W.detach().clone()
+            return out.reshape(h, w)
 
         for param in self.parameters():
             param.data = _fill(*param.data.shape)
