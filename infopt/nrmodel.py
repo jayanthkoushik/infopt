@@ -8,8 +8,8 @@ from GPyOpt.models.base import BOModel
 
 
 class NRModel(BOModel):
-    """Torch neural network for modeling data, based on NeuralUCB.
-    """
+    """Torch neural network for modeling data, based on NeuralUCB."""
+
     MCMC_sampler = False
     analytical_gradient_prediction = True
 
@@ -44,27 +44,29 @@ class NRModel(BOModel):
 
         # Calculate value for `m`
         # NOTE: Extended definition: choose the minimum of all hidden feature dimensions
-        self.m = np.min([layer.out_features for layer in self.net.layers if layer.out_features > 1])
+        self.m = np.min(
+            [layer.out_features for layer in self.net.layers if layer.out_features > 1]
+        )
 
         # Initialize Z-inverse matrix
-        self.p = np.sum([np.prod(param.shape) for param in net.parameters()
-                         if param.requires_grad])
-        self.Z_inv = 1./lda * torch.eye(self.p)
+        self.p = np.sum(
+            [np.prod(param.shape) for param in net.parameters() if param.requires_grad]
+        )
+        self.Z_inv = 1.0 / lda * torch.eye(self.p, device=device)
 
-    @staticmethod
-    def _flatten_grads(grads):
+    def _flatten_grads(self, grads):
         """Flattens parameter gradients from multiple layers into a single vector."""
-        return torch.cat([grad.view(-1) for grad in grads])
-    
+        return torch.cat([grad.view(-1) for grad in grads]).to(self.device)
+
     def _update_Z_inv(self, out_grads):
         """Use Sherman-Morrison formula to expedite computation of inverse,
         since Z is updated by adding a rank 1 matrix which is the outer product of grad.
         Idea borrowed from https://github.com/sauxpa/neural_exploration.
         """
-        flat_out_grad = self.__class__._flatten_grads(out_grads)
+        flat_out_grad = self._flatten_grads(out_grads)
         ivp = torch.matmul(self.Z_inv, flat_out_grad)
         denom = 1 + torch.matmul(flat_out_grad, ivp)
-        self.Z_inv -= 1./denom * torch.outer(ivp, ivp)
+        self.Z_inv -= 1.0 / denom * torch.outer(ivp, ivp)
 
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """
@@ -100,7 +102,9 @@ class NRModel(BOModel):
 
         if self.tb_writer is not None and self.total_iter % self.ckpt_every == 0:
             self.tb_writer.add_scalar(
-                "nr_model/Z_inv_elemwise_avg", torch.mean(self.Z_inv).item(), self.total_iter
+                "nr_model/Z_inv_elemwise_avg",
+                torch.mean(self.Z_inv).item(),
+                self.total_iter,
             )
 
         # Update model using all the collected data points
@@ -114,7 +118,7 @@ class NRModel(BOModel):
             _loss = self.criterion(batch_Yhat, batch_Y) * 0.5
             regularizer = 0
             for p_new, p_old in zip(self.net.parameters(), self.net.params_0):
-                regularizer += torch.sum((p_new - p_old)**2)
+                regularizer += torch.sum((p_new - p_old.to(self.device)) ** 2)
             _loss += self.m * self.lda * regularizer * 0.5
             self.optim.zero_grad()
             _loss.backward()
@@ -138,9 +142,9 @@ class NRModel(BOModel):
         x.requires_grad = True
         self.net.zero_grad()
         m = self.net(x)
-        flat_dmdp = self.__class__._flatten_grads(
-                   torch.autograd.grad(m, self.net.parameters(), create_graph=True)
-               )
+        flat_dmdp = self._flatten_grads(
+            torch.autograd.grad(m, self.net.parameters(), create_graph=True)
+        )
         v = torch.matmul(flat_dmdp, torch.matmul(self._uncertainty_mat(), flat_dmdp))
 
         with torch.no_grad():
@@ -148,7 +152,9 @@ class NRModel(BOModel):
             if comp_grads:
                 self.dsdx = torch.autograd.grad(v, x, retain_graph=True)[0]
                 if s > 0:
-                    self.dsdx.div_(2*s)  # NOTE: `self.dsdx` was actually dvdx up to this point
+                    self.dsdx.div_(
+                        2 * s
+                    )  # NOTE: `self.dsdx` was actually dvdx up to this point
                 dmdx = torch.autograd.grad(m, x)[0]
                 dsdx = self.dsdx
             else:
@@ -208,16 +214,22 @@ class NRIFModel(NRModel):
         tb_writer=None,
     ):
         super().__init__(
-            net, lda, optim, criterion,
-            update_batch_size, update_iters_per_point,
-            ckpt_every, device, tb_writer
+            net,
+            lda,
+            optim,
+            criterion,
+            update_batch_size,
+            update_iters_per_point,
+            ckpt_every,
+            device,
+            tb_writer,
         )
 
         # Initialize L matrix
         self.L = torch.eye(self.p) * lda
 
     def _update_L(self, action, reward):
-        """Recursively updates the L matrix given (optimal action, observed reward) pair.
+        """Recursively update the L matrix given (optimal action, observed reward) pair.
         Also keep a record of the number of updates (i.e. number of training points)
         for computing confidence interval.
 
@@ -229,8 +241,10 @@ class NRIFModel(NRModel):
         out = self.net(action)
         loss = self.criterion(out, torch.unsqueeze(reward, 0))
         loss.backward()
-        loss_grads = [param.grad for param in self.net.parameters() if param.requires_grad]
-        flat_loss_grad = self.__class__._flatten_grads(loss_grads).detach()
+        loss_grads = [
+            param.grad for param in self.net.parameters() if param.requires_grad
+        ]
+        flat_loss_grad = self._flatten_grads(loss_grads).detach()
         self.L += torch.outer(flat_loss_grad, flat_loss_grad)
 
     def _uncertainty_mat(self):
@@ -272,7 +286,9 @@ class NRIFModel(NRModel):
 
         if self.tb_writer is not None and self.total_iter % self.ckpt_every == 0:
             self.tb_writer.add_scalar(
-                "nr_model/Z_inv_elemwise_avg", torch.mean(self.Z_inv).item(), self.total_iter
+                "nr_model/Z_inv_elemwise_avg",
+                torch.mean(self.Z_inv).item(),
+                self.total_iter,
             )
 
         # Update model using all the collected data points
@@ -286,7 +302,7 @@ class NRIFModel(NRModel):
             _loss = self.criterion(batch_Yhat, batch_Y) * 0.5
             regularizer = 0
             for p_new, p_old in zip(self.net.parameters(), self.net.params_0):
-                regularizer += torch.sum((p_new - p_old)**2)
+                regularizer += torch.sum((p_new - p_old.to(self.device)) ** 2)
             _loss += self.m * self.lda * regularizer * 0.5
             self.optim.zero_grad()
             _loss.backward()
