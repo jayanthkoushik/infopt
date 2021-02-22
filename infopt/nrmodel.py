@@ -226,7 +226,7 @@ class NRIFModel(NRModel):
         )
 
         # Initialize L matrix
-        self.L = torch.eye(self.p) * lda
+        self.L = torch.eye(self.p, device=self.device) * lda
 
     def _update_L(self, action, reward):
         """Recursively update the L matrix given (optimal action, observed reward) pair.
