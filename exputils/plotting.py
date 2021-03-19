@@ -60,7 +60,7 @@ def load_save_data(res_dir, skip_pats):
 
 
 def plot_performance(args, y="R", data_df=None):
-    mw.configure(args.context, args.style, args.font)
+    mw.configure(args.plotting_context, args.plotting_style, args.plotting_font)
     if data_df is None:
         data_df = load_save_data(args.res_dir, args.skip_pats)
     models = data_df["Model"].unique()
@@ -90,12 +90,13 @@ def plot_performance(args, y="R", data_df=None):
         code.interact(local={**locals(), **globals()})
         return
 
-    fig.set_size_inches(*args.fig_size)
+    if args.fig_size:
+        fig.set_size_inches(*args.fig_size)
     fig.savefig(args.save_file.name)
 
 
 def plot_timing(args):
-    mw.configure(args.context, args.style, args.font)
+    mw.configure(args.plotting_context, args.plotting_style, args.plotting_font)
     data_df = load_save_data(args.res_dir, args.skip_pats)
     data_df = data_df[data_df["t"] % args.model_update_interval == 0]
     models = data_df["Model"].unique()
@@ -125,5 +126,6 @@ def plot_timing(args):
     ax.yaxis.tick_right()
     ax.set_xlabel("$t$")
     ax.set_ylabel("Iteration time (s)")
-    fig.set_size_inches(*args.fig_size)
+    if args.set_size:
+        fig.set_size_inches(*args.fig_size)
     fig.savefig(args.save_file.name)

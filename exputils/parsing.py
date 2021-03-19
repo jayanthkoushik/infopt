@@ -29,7 +29,7 @@ base_arg_parser.add_argument(
 
 def make_nn_nr_parser(parser, mname):
     """Add parser options for nninf/nr."""
-    assert mname == "nn" or mname == "nr"
+    assert mname in ("nn", "nr")
     if mname == "nr":
         nr_parser = parser.add_argument_group("nr")
         nr_parser.add_argument(
@@ -161,6 +161,7 @@ def make_plot_parser(parser):
 
     mw.add_parser_config_args(parser)
 
+    parser.add_argument("--fig-size", type=int, nargs=2)
     parser.add_argument("--res-dir", type=str, required=True)
     parser.add_argument(
         "--skip-pats",
