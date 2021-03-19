@@ -124,6 +124,7 @@ def run(args):
     del result["bo"]
     result["args"] = vars(args)
     pickle.dump(result, save_file.buffer)
+    save_file.close()
 
 
 class HypOptObj(metaclass=ABCMeta):

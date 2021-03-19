@@ -301,6 +301,7 @@ def run(args):
     result["mu_mins"] = mu_mins
     result["sig_mins"] = sig_mins
     pickle.dump(result, save_file.buffer)
+    save_file.close()
 
 
 def run_offline_nn(args):
