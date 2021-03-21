@@ -1,6 +1,7 @@
 """models.py: helpers to create gpyopt models."""
 
 import logging
+import sys
 
 import GPyOpt.acquisitions
 import torch
@@ -172,16 +173,18 @@ class NRNet(nn.Module):
         has_bias: Whether the FC layers should have trainable bias terms
         """
         super().__init__()
-        assert (
-            not init_as_design or hidden_dim % 2 == 0
-        ), "'hidden_dim' must be an even number to init weights as in paper"
+        if init_as_design and (hidden_dim % 2 != 0):
+            logging.critical(
+                "hidden dim must be an even number to init NRNet weights as in paper"
+            )
+            sys.exit(1)
         self.in_dim = in_dim
         self.hidden_dim = hidden_dim
         self.as_orig = as_orig
         out_dim = 1
 
         # Create FC layers of network
-        layer_sizes = [in_dim] + [hidden_dim for _ in range(num_layers - 1)] + [out_dim]
+        layer_sizes = [in_dim] + [hidden_dim for _ in range(num_layers)] + [out_dim]
         self.layers = []
         for i, (ls, ls_n) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
             self.layers.append(nn.Linear(ls, ls_n, bias=has_bias))

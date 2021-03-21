@@ -255,11 +255,15 @@ def run(args):
             acq_fast_project = None
 
         if args.mname == "nr":
+            if any(l != args.layer_sizes[0] for l in args.layer_sizes):
+                logging.critical("NRNet needs all hidden layer sizes to be the same")
+                sys.exit(1)
             base_model = NRNet(
                 len(args.layer_sizes),
                 args.fdim,
-                np.min(args.layer_sizes),
+                args.layer_sizes[0],
                 as_orig=args.use_original_nr,
+                has_bias=args.nr_has_bias,
             ).to(DEVICE)
             model, acq = model_nr(base_model, space, args, acq_fast_project)
         else:

@@ -46,6 +46,12 @@ def make_nn_nr_parser(parser, mname):
             default=1e-2,
             help="lambda value for NeuralUCB & variants",
         )
+        nr_parser.add_argument(
+            "--no-nr-bias",
+            action="store_false",
+            dest="nr_has_bias",
+            help="don't add bias units to NRNet",
+        )
 
     if mname == "nn":
         ihvp_parser = parser.add_argument_group("model low-rank ihvp")
