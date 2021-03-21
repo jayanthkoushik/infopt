@@ -8,13 +8,13 @@ import torch
 import torch.nn as nn
 from GPyOpt.models import GPModel, GPModel_MCMC
 
+from exputils.nrmodel import NRIFModel, NRModel
 from exputils.optimization import SinglePassAcquisitionOptimizer
 from infopt.gpinfacq import GPInfAcq
 from infopt.gpinfacq_mcmc import GPInfAcq_MCMC
 from infopt.ihvp import LowRankIHVP
 from infopt.nnacq import NNAcq
 from infopt.nnmodel import NNModel
-from infopt.nrmodel import NRIFModel, NRModel
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
