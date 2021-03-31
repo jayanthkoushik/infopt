@@ -7,6 +7,7 @@ import logging
 from shinyutils import (
     build_log_argp,
     ClassType,
+    InputDirectoryType,
     KeyValuePairsType,
     LazyHelpFormatter,
     OutputDirectoryType,
@@ -165,7 +166,12 @@ def make_plot_parser(parser):
     mw.add_parser_config_args(parser)
 
     parser.add_argument("--fig-size", type=int, nargs=2)
-    parser.add_argument("--res-dir", type=str, required=True)
+    parser.add_argument(
+        "--res-dir",
+        type=InputDirectoryType(),
+        required=True,
+        metavar=InputDirectoryType.metavar,
+    )
     parser.add_argument(
         "--skip-pats",
         type=str,
