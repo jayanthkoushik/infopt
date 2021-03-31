@@ -79,6 +79,10 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
         self.evaluate_objective_orig()
         pbar.update(1)
 
+        iter_times.append(time.time() - timer)
+        timer = time.time()
+        postfix_dict["t_i"] = iter_times[-1]
+
         if hasattr(acq, "exploration_weight") and args.use_const_exp_w is None:
             _t = pbar.n + 1
             acq.exploration_weight = (
