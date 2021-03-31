@@ -122,9 +122,6 @@ def make_gp_parser(parser):
         "--acq-type", type=str, default="lcb", choices=["lcb", "ei", "mpi", "inf"]
     )
     gp_parser.add_argument("--mcmc", action="store_true")
-    gp_parser.add_argument(
-        "--no-exact-feval", action="store_false", dest="exact_feval", default=True
-    )
     gp_parser.add_argument("--ard", action="store_true")
 
 

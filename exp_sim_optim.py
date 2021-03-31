@@ -244,7 +244,11 @@ def run(args):
     space = Design_space(bounds)
 
     if args.mname == "gp":
-        model, acq = model_gp(space, args)
+        _exact_feval = noise_fun is None
+        logging.info(
+            f"{'exact' if _exact_feval else 'noisy'} evaluation setting for gp model"
+        )
+        model, acq = model_gp(space, args, _exact_feval)
         normalize_Y = True
     else:
         b0 = fun.bounds[0]

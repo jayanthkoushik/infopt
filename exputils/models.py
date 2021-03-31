@@ -111,12 +111,12 @@ def model_nr(base_model, space, args, acq_fast_project=None):
     return bo_model, acq
 
 
-def model_gp(space, args):
+def model_gp(space, args, exact_feval=True):
     # TODO: allow setting kernel
     if args.mcmc:
-        model = GPModel_MCMC(exact_feval=args.exact_feval, verbose=False)
+        model = GPModel_MCMC(exact_feval=exact_feval, verbose=False)
     else:
-        model = GPModel(exact_feval=args.exact_feval, ARD=args.ard, verbose=False)
+        model = GPModel(exact_feval=exact_feval, ARD=args.ard, verbose=False)
     logging.debug(f"model: {model.__class__.__name__}")
 
     if args.acq_type == "inf":
