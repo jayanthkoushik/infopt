@@ -223,6 +223,7 @@ def run(args):
         noise_fun = None
     logging.info(f"noise: {noise_fun}")
 
+    fun.f_noiseless = fun.f
     if noise_fun is not None:
         # Decorate fun.f to add noise to its output
         def decorate_with_noise(_f, _noisef):

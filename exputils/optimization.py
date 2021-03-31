@@ -86,19 +86,17 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
             )
             postfix_dict["exp_w"] = acq.exploration_weight
 
-        fmin_hat = min(fmin_hat, self.Y[-1].item())
-        if fun.fmin is not None:
-            fmin_hat = max(fmin_hat, fun.fmin)
-            inst_regrets.append(max(self.Y[-1].item() - fun.fmin, 0))
-            regrets.append(fmin_hat - fun.fmin)
-            postfix_dict["r_i"] = inst_regrets[-1]
-            postfix_dict["R_i"] = regrets[-1]
-        postfix_dict["f*hat"] = fmin_hat
-        postfix_dict["y_i"] = self.Y[-1].item()
-
-        iter_times.append(time.time() - timer)
-        timer = time.time()
-        postfix_dict["t_i"] = iter_times[-1]
+        if hasattr(fun, "f_noiseless"):
+            _fhat = fun.f_noiseless(self.X[np.newaxis, -1, :]).item()
+            fmin_hat = min(fmin_hat, _fhat)
+            if fun.fmin is not None:
+                inst_regrets.append(_fhat - fun.fmin)
+                regrets.append(fmin_hat - fun.fmin)
+                postfix_dict["r_i"] = inst_regrets[-1]
+                postfix_dict["R_i"] = regrets[-1]
+            postfix_dict["f*hat"] = fmin_hat
+            postfix_dict["y_i"] = self.Y[-1].item()
+            postfix_dict["fhat_i"] = _fhat
 
         if eval_hook is not None:
             eval_hook(pbar.n, bo, postfix_dict)
@@ -139,7 +137,7 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
         bo.run_optimization(args.optim_iters, eps=-1)
 
     result = {"iter_times": iter_times, "X": bo.X, "y": bo.Y, "bo": bo}
-    if fun.fmin is not None:
+    if inst_regrets:
         result["inst_regrets"] = inst_regrets
         result["regrets"] = regrets
     return result
