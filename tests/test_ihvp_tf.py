@@ -7,9 +7,8 @@ import unittest
 from typing import Optional
 
 import tensorflow as tf
-import torch
 
-from infopt.ihvp_tf import IterativeIHVPTF
+from infopt.ihvp_tf import IterativeIHVPTF, LowRankIHVPTF
 
 CHECK_PLACES = 4  # Number of decimal places used for comparing numbers
 
@@ -25,7 +24,7 @@ else:
     TB_WRITER = None
 
 
-class TestIHVP_TF(unittest.TestCase):
+class TestIHVPTF(unittest.TestCase):
 
     """Test cases for different IHVP implementations in TensorFlow."""
 
@@ -80,7 +79,7 @@ class TestIHVP_TF(unittest.TestCase):
             self.grad_params = inner_tape.gradient(self.out, self.params)
 
     def _test_ihvp(self, ihvp, simple=False):
-        ihvp.update(self.out, self.grad_params, self.outer_tape)
+        ihvp.update(self.out, self.grad_params, self.outer_tape, self.vs)
         for v, ihvp_true_flat in zip(self.vs, self.ihvp_true_flats):
             ihvp_app = ihvp.get_ihvp(v)
             self.assertIsInstance(ihvp_app, list, msg="IHVP is not a list")
@@ -110,30 +109,32 @@ class TestIHVP_TF(unittest.TestCase):
         self._test_ihvp(ihvp)
         ihvp.close()
 
-    # @unittest.expectedFailure
-    # def test_low_rank_ihvp(self):
-    #     """Test LowRankIHVP."""
-    #     ihvp = LowRankIHVP_TF(
-    #         self.params,
-    #         rank=5,
-    #         batch_size=5,
-    #         iters_per_point=20,
-    #         # device=DEVICE,
-    #         tb_writer=TB_WRITER,
-    #     )
-    #     self._test_ihvp(ihvp)
-    #
-    # def test_low_rank_ihvp_simple(self):
-    #     """Test only elementary functionality of LowRankIHVP."""
-    #     ihvp = LowRankIHVP_TF(
-    #         self.params,
-    #         rank=3,
-    #         batch_size=1,
-    #         iters_per_point=100,
-    #         # device=DEVICE,
-    #         tb_writer=TB_WRITER,
-    #     )
-    #     self._test_ihvp(ihvp, simple=True)
+    @unittest.expectedFailure
+    def test_low_rank_ihvp(self):
+        """Test LowRankIHVP."""
+        ihvp = LowRankIHVPTF(
+            self.params,
+            rank=5,
+            batch_size=5,
+            iters_per_point=20,
+            # device=DEVICE,
+            tb_writer=TB_WRITER,
+        )
+        self._test_ihvp(ihvp)
+        ihvp.close()
+
+    def test_low_rank_ihvp_simple(self):
+        """Test only elementary functionality of LowRankIHVP."""
+        ihvp = LowRankIHVPTF(
+            self.params,
+            rank=3,
+            batch_size=1,
+            iters_per_point=100,
+            # device=DEVICE,
+            tb_writer=TB_WRITER,
+        )
+        self._test_ihvp(ihvp, simple=True)
+        ihvp.close()
 
 
 if __name__ == "__main__":

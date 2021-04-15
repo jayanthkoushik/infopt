@@ -111,7 +111,7 @@ class NNModelTF(BOModel):
             mean_loss = tf.reduce_mean(losses)
 
         # TF2: requires passing grad_params & outer_tape to ihvp
-        self.ihvp.update(mean_loss, grad_params, outer_tape)
+        self.ihvp.update(mean_loss, grad_params, outer_tape, dls)
 
         # Compute H^{-1}grad(L(z)) for selected points
         num_higs = min(len(dls), self.num_higs)

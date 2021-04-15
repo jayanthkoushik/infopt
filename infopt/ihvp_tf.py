@@ -5,8 +5,10 @@ HVP Reference:
 """
 
 from abc import ABC, abstractmethod
+import random
 from tqdm import tqdm
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -31,12 +33,14 @@ class BaseIHVPTF(ABC):
         raise NotImplementedError
 
     # pylint: disable=unused-argument
-    def update(self, out, grad_params, outer_tape):
+    def update(self, out, grad_params, outer_tape, vs):
         """Update the output, its gradients, and the outer gradient tape
         with respect to which ihvp is computed."""
         self.out = out
         self.grad_params = grad_params
         self.outer_tape = outer_tape
+        assert self.outer_tape._persistent, \
+            f"Second-order gradient tape must be persistent"
 
     def close(self):
         """Closes the outer gradient tape to free up memory.
@@ -106,158 +110,202 @@ class IterativeIHVPTF(BaseIHVPTF):
         return ihvp
 
 
-# class LowRankIHVPTF(BaseIHVPTF):
-#
-#     """Approximate Hessian-vector products using a low rank approximation
-#     of the Hessian.
-#
-#     The low rank matrix is itself represented using a neural network.
-#     """
-#
-#     class _Net(nn.Module):
-#
-#         """Network to approximate Hv of the target network."""
-#
-#         def __init__(self, n_ins, n_h):
-#             super().__init__()
-#             self.fcs = []
-#             for i, n_in in enumerate(n_ins):
-#                 fc = nn.Linear(n_in, n_h, bias=False)
-#                 setattr(self, f"fc{i}", fc)
-#                 self.fcs.append(fc)
-#
-#         def forward(self, *x):
-#             h = sum(fc(x_i) for fc, x_i in zip(self.fcs, x))
-#             y = [h @ fc.weight for fc in self.fcs]
-#             return y
-#
-#     # pylint: disable=dangerous-default-value
-#     def __init__(
-#         self,
-#         params,
-#         rank,
-#         batch_size=np.inf,
-#         iters_per_point=20,
-#         criterion=F.mse_loss,
-#         optim_cls=Adam,
-#         optim_kwargs={"lr": 0.01},
-#         ckpt_every=1,
-#         device=torch.device("cpu"),
-#         tb_writer=None,
-#     ):
-#         super().__init__()
-#         self.target_params = list(params)
-#         self.numels = [p.numel() for p in self.target_params]
-#         self.app_net = self._Net(self.numels, rank).to(device)
-#         self.criterion = criterion
-#         self.batch_size = batch_size
-#         self.iters_per_point = iters_per_point
-#         self.optim = optim_cls(params=self.app_net.parameters(), **optim_kwargs)
-#         self.total_iter = 0
-#         self.n_train = 0
-#         self.ckpt_every = ckpt_every
-#         self.tb_writer = tb_writer
-#         self.P = torch.zeros(sum(self.numels), rank, device=device)
-#         self._update_wew()
-#
-#     def _update_wew(self):
-#         """Update the helper tensors used for get_ihvp."""
-#         with torch.no_grad():
-#             P = torch.cat([fc.weight.t() for fc in self.app_net.fcs], out=self.P)
-#             U, S, _ = torch.svd(P)
-#             We = U @ torch.diag(1 / S ** 2)
-#             Wt = U.t()
-#
-#             # Convert We and Wt to a list of tensors compatible with the params
-#             self.We, self.Wt = [], []
-#             n = 0
-#             for p, n_i in zip(self.target_params, self.numels):
-#                 shape = list(p.shape)
-#                 self.We.append(We[n : n + n_i, :].contiguous().view(*(shape + [-1])))
-#                 self.Wt.append(Wt[:, n : n + n_i].contiguous().view(*([-1] + shape)))
-#                 n += n_i
-#
-#     def update(self, out, vs):
-#         self.out = out
-#         train_vs = []
-#         for v in vs:
-#             train_vs.append([v_i.contiguous().view(-1) for v_i in v])
-#         n_new = max(1, len(train_vs) - self.n_train)
-#         self.n_train = len(train_vs)
-#
-#         grad_target_params = [
-#             g.contiguous().view(-1)
-#             for g in torch.autograd.grad(
-#                 self.out, self.target_params, create_graph=True
-#             )
-#         ]
-#
-#         idx = 0
-#         Y_train = []
-#         batch_size = min(self.batch_size, len(train_vs))
-#         while idx < self.n_train:
-#             batch_X = train_vs[idx : idx + batch_size]
-#             idx += len(batch_X)
-#             grad_param_vps = [
-#                 [
-#                     grad_target_params[j].view(-1) @ batch_X[i][j].view(-1)
-#                     for j in range(len(self.target_params))
-#                 ]
-#                 for i in range(len(batch_X))
-#             ]
-#             with torch.no_grad():
-#                 batch_Y = [
-#                     torch.cat(
-#                         list(
-#                             map(
-#                                 lambda y: y.contiguous().view(-1).detach(),
-#                                 torch.autograd.grad(
-#                                     grad_param_vp, self.target_params, create_graph=True
-#                                 ),
-#                             )
-#                         )
-#                     )
-#                     for grad_param_vp in grad_param_vps
-#                 ]
-#             Y_train.extend(batch_Y)
-#
-#         iters = self.iters_per_point * n_new
-#         for _ in range(iters):
-#             idxs = random.sample(range(self.n_train), batch_size)
-#             batch_X = [train_vs[idx] for idx in idxs]
-#             batch_Y = [Y_train[idx] for idx in idxs]
-#
-#             # Compute predictions and loss
-#             batch_Yhat = self.app_net(*map(torch.stack, zip(*batch_X)))
-#             batch_Yhat = list(zip(*batch_Yhat))
-#             loss = sum(
-#                 self.criterion(torch.cat(y_hat), y) / batch_size
-#                 for y, y_hat in zip(batch_Y, batch_Yhat)
-#             )
-#             self.total_iter += 1
-#             if self.tb_writer is not None and self.total_iter % self.ckpt_every == 0:
-#                 self.tb_writer.add_scalar(
-#                     "low_rank_ihvp/log_hv_loss",
-#                     torch.log10(loss).item(),
-#                     self.total_iter,
-#                 )
-#             self.optim.zero_grad()
-#             loss.backward()
-#             self.optim.step()
-#         self._update_wew()
-#
-#     def get_ihvp(self, v):
-#         assert isinstance(v, list)
-#         assert len(v) == len(self.target_params)
-#         with torch.no_grad():
-#             Wtv = sum(
-#                 (
-#                     torch.mul(Wt_i, v_i.unsqueeze(0))
-#                     .contiguous()
-#                     .view(-1, n_i)
-#                     .sum(dim=1)
-#                 )
-#                 for Wt_i, v_i, n_i in zip(self.Wt, v, self.numels)
-#             )
-#             iHv = [torch.matmul(We_i, Wtv) for We_i in self.We]
-#         return iHv
+class LowRankIHVPTF(BaseIHVPTF):
+
+    """Approximate Hessian-vector products using a low rank approximation
+    of the Hessian.
+
+    The low rank matrix is itself represented using a neural network.
+
+    Math:
+    H ~ Q = P @ tr(P)
+    P = U @ S @ tr(V)
+    => H^{-1} ~ Q^{-1} = U @ (1/S**2) @ tr(U)
+
+    AppNet(v) = P @ tr(P) @ v,
+        where AppNet is an autoencoder and
+        P is the weight matrix of AppNet's encoder.
+
+    After training, compute U, S, V = svd(P), and obtain
+        H^{-1}v ~ U @ (1/S**2) @ tr(U) @ v.
+    We = U @ (1/S**2), Wt = tr(U).
+    """
+
+    @staticmethod
+    def _make_app_net(n_ins, n_h):
+        """Make the autoencoding NN that approximates Hv."""
+        inputs = [tf.keras.Input(shape=n_in, name=f"input{i}")
+                  for i, n_in in enumerate(n_ins)]
+        fcs = [tf.keras.layers.Dense(n_h, name=f"fc{i}")
+               for i, n_in in enumerate(n_ins)]
+        hidden = tf.reduce_sum([fc(inp) for inp, fc in zip(inputs, fcs)], 0)
+        ys = [hidden @ tf.transpose(fc.kernel) for fc in fcs]
+        return tf.keras.Model(inputs=inputs, outputs=ys, name="app_net")
+
+    class _AppNet(tf.keras.Model):
+        """Make the autoencoding NN that approximates Hv."""
+
+        def __init__(self, n_ins, n_h):
+            super().__init__(self)
+            self.n_ins = n_ins
+            self.n_h = n_h
+            self.fcs = [tf.keras.layers.Dense(n_h, name=f"fc{i}")
+                        for i, n_in in enumerate(n_ins)]
+
+        def call(self, inputs, training=None, mask=None):
+            assert len(inputs) == len(self.n_ins)
+            hidden = tf.reduce_sum([
+                fc(inp) for inp, fc in zip(inputs, self.fcs)
+            ], axis=0)
+            ys = [tf.matmul(hidden, tf.transpose(fc.kernel)) for fc in self.fcs]
+            return ys
+
+        def train_step(self, data):
+            raise NotImplementedError
+
+    # pylint: disable=dangerous-default-value
+    def __init__(
+        self,
+        params,
+        rank,
+        batch_size=np.inf,
+        iters_per_point=20,
+        criterion=tf.keras.losses.MeanSquaredError(),
+        optim_cls=tf.keras.optimizers.Adam,
+        optim_kwargs={"learning_rate": 0.01},
+        ckpt_every=1,
+        device="cpu",
+        tb_writer=None,
+    ):
+        super().__init__()
+        self.target_params = list(params)
+        self.numels = [p.shape.num_elements() for p in self.target_params]
+        self.criterion = criterion
+        self.batch_size = batch_size
+        self.iters_per_point = iters_per_point
+        self.optim = optim_cls(**optim_kwargs)
+        self.total_iter = 0
+        self.n_train = 0
+        self.ckpt_every = ckpt_every
+        self.device = device
+        self.tb_writer = tb_writer
+
+        # Setup tf.keras model
+        self.app_net = self._make_app_net(self.numels, rank)
+        self.app_net.compile(self.optim, loss=self.criterion)
+
+        self.P = tf.zeros(shape=(sum(self.numels), rank))
+        self._update_wew()
+
+    def _update_wew(self):
+        """Update the helper tensors used for get_ihvp."""
+        self.P = tf.concat([self.app_net.get_layer(f"fc{i}").kernel
+                            for i in range(len(self.target_params))], axis=0)
+        S, U, V = tf.linalg.svd(self.P)
+        We = U / (S ** 2)
+        Wt = tf.transpose(U)
+
+        # Convert We and Wt to a list of tensors compatible with the params
+        self.We, self.Wt = [], []
+        n = 0
+        for p, n_i in zip(self.target_params, self.numels):
+            shape = list(p.shape)
+            self.We.append(tf.reshape(We[n : n + n_i, :], shape + [-1]))
+            self.Wt.append(tf.reshape(Wt[:, n : n + n_i], [-1] + shape))
+            n += n_i
+
+    def update(self, out, grad_params, outer_tape, vs):
+        """Update the output, its gradients, and the outer gradient tape
+        with respect to which ihvp is computed.
+
+        vs (and their IHVPs) are used here as the training points for app_net.
+        They have the same shape as self.params and self.grad_params.
+        """
+        self.out = out
+        self.grad_params = grad_params
+        self.outer_tape = outer_tape
+        assert self.grad_params is not None and self.outer_tape is not None
+        assert self.outer_tape._persistent, \
+            f"Second-order gradient tape must be persistent"
+        train_vs = vs
+        # TODO(yj): batchify
+        # for v in vs:
+        #     # first dimension is batch size (1)
+        #     train_vs.append([tf.reshape(v_i, [1, -1]) for v_i in v])
+        n_new = max(1, len(train_vs) - self.n_train)
+        self.n_train = len(train_vs)
+
+        # grad_target_params = [tf.reshape(g, [-1]) for g in self.grad_params]
+
+        # Step 1: Make batches of (v, hvp(v)) for training app_net
+        idx = 0
+        Y_train = []
+        batch_size = min(self.batch_size, len(train_vs))
+        while idx < self.n_train:
+            batch_X = train_vs[idx : idx + batch_size]
+            idx += len(batch_X)
+            batch_Y = [
+                # back-over-back hvp.
+                tf.concat([
+                    tf.reshape(hvp_i, [-1])
+                    for hvp_i in self.outer_tape.gradient(self.grad_params,
+                                                          self.target_params,
+                                                          output_gradients=v)
+                ], axis=0)
+                for v in batch_X
+            ]  # list of 1-d tensors of shape (#params, )
+            Y_train.extend(batch_Y)
+
+        # Step 2: Train app_net
+        # self.app_net.fit(
+        #     train_vs,
+        #     Y_train,
+        #     batch_size,
+        #     (self.iters_per_point * n_new) // self.n_train,
+        #     verbose=0,
+        #     shuffle=True,
+        # )
+        iters = self.iters_per_point * n_new
+        for _ in range(iters):
+            idxs = random.sample(range(self.n_train), batch_size)
+            batch_X = [[tf.reshape(v_i, [1, -1]) for v_i in train_vs[idx]]
+                       for idx in idxs]
+            batch_Y = [Y_train[idx] for idx in idxs]
+
+            # Compute predictions and loss
+            with tf.GradientTape() as tape:
+                batch_Yhat = self.app_net([tf.concat(x, 0)
+                                           for x in zip(*batch_X)])
+                batch_Yhat = list(zip(*batch_Yhat))
+                loss = sum(
+                    self.criterion(y, tf.concat(y_hat, axis=0)) / batch_size
+                    for y, y_hat in zip(batch_Y, batch_Yhat)
+                )
+            gradients = tape.gradient(loss, self.app_net.trainable_variables)
+            self.optim.apply_gradients(zip(gradients,
+                                           self.app_net.trainable_variables))
+            self.total_iter += 1
+            if (self.tb_writer is not None and
+                self.total_iter % self.ckpt_every == 0):
+                self.tb_writer.add_scalar(
+                    "low_rank_ihvp/log_hv_loss",
+                    np.log10(loss.numpy()).item(),
+                    self.total_iter,
+                )
+
+        # Step 3: Update SVD of P
+        self._update_wew()
+
+    def get_ihvp(self, v):
+        """Compute [H_params(self.out)]^(-1)v."""
+        assert isinstance(v, list)
+        assert len(v) == len(self.target_params)
+        Wtv = sum([
+            tf.reduce_sum(tf.reshape(Wt_i * tf.expand_dims(v_i, 0), [-1, n_i]),
+                          axis=1)
+            for Wt_i, v_i, n_i in zip(self.Wt, v, self.numels)
+        ])  # (n_h, )
+        Wtv = tf.expand_dims(Wtv, axis=1)  # (n_h, 1)
+        iHv = [We_i @ Wtv for We_i in self.We]  # [(numel, )]
+        return iHv
+
