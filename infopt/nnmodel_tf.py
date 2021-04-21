@@ -132,25 +132,30 @@ class NNModelTF(BOModel):
         v = tf.constant(0.0, dtype=tf.float32)  # variance = sum(influence^2)
         with tf.GradientTape(persistent=True) as outer_tape:
             with tf.GradientTape() as inner_tape:
-                m = self.net(x, training=False)  # TODO(yj): dropout?
-            dmdp = inner_tape.gradient(m, self.net.trainable_variables)
+                m = self.net(x, training=False)
+            grads = inner_tape.gradient(m, self.net.trainable_variables + [x])
+            dmdp, dmdx = grads[:-1], grads[-1]
             if comp_grads:
-                self.dmdx = inner_tape.gradient(m, x)
+                self.dmdx = dmdx
                 self.dsdx = tf.zeros_like(x, dtype=tf.float32)
 
+            # Calculate s and dsdx
             # hig: H^{-1}grad(L(z))
             # influence: sum(dmdp * H^{-1}grad(L(z)))
-            for hig in self.higs:
-                dmdp_hig = [
-                    tf.reduce_sum(tf.multiply(dmdp_i, hig_i))
-                    for dmdp_i, hig_i in zip(dmdp, hig)
-                ]
-                influence = sum(dmdp_hig)
-                v += influence ** 2 / len(self.higs)
+            dmdp_higs = [
+                [tf.reduce_sum(tf.multiply(dmdp_i, tf.squeeze(hig_i)))
+                 for dmdp_i, hig_i in zip(dmdp, hig)]
+                for hig in self.higs
+            ]
+            influences = [sum(dmdp_hig) for dmdp_hig in dmdp_higs]
+            v = tf.reduce_mean(tf.square(influences))
 
-                if comp_grads:
-                    dmdpdx_hig = outer_tape.gradient(dmdp_hig, x)
-                    self.dsdx += influence * dmdpdx_hig / len(self.higs)
+        if comp_grads:
+            dmdpdx_higs = outer_tape.gradient(dmdp_higs, x)
+            self.dsdx = tf.reduce_mean([
+                influence * dmdpdx_hig
+                for influence, dmdpdx_hig in zip(influences, dmdpdx_higs)
+            ])
 
         s = tf.math.sqrt(v)
         if comp_grads:
