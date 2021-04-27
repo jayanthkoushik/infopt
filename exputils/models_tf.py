@@ -60,11 +60,11 @@ def model_nn_inf(base_model, space, args, acq_fast_project=None):
         DEVICE,
         args.tb_writer,
     )
-
+    from GPyOpt.methods import BayesianOptimization
     acq = NNAcqTF(
         bo_model,
         space,
-        0,
+        0,  # set in optimization.py#L88
         args.acq_optim_cls,
         args.acq_optim_params,
         args.acq_optim_iters,

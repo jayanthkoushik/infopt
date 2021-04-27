@@ -97,18 +97,11 @@ class NNModelTF(BOModel):
         # TF2: an active outer gradient tape must be passed to ihvp
         #      for second-order gradient computations.
         with tf.GradientTape(persistent=True) as outer_tape:
-            with tf.GradientTape() as inner_tape:
-                Yhat_idxs = self.net(X_idxs, training=True)
-                losses = self.criterion(Y_idxs[:, tf.newaxis],
-                                        Yhat_idxs[:, tf.newaxis])  # per example
-            dls = inner_tape.jacobian(losses, self.net.trainable_variables)
-            # gradient of mean loss w.r.t. parameters
-            grad_params = [tf.reduce_mean(dl, axis=0) for dl in dls]
-            # gradient of per-example loss w.r.t. parameters
-            dls = list(zip(*[list(dl) for dl in dls]))
-            assert len(dls) == ihvp_n
-            assert len(dls[0]) == len(self.net.trainable_variables)
-            mean_loss = tf.reduce_mean(losses)
+            mean_loss, grad_params, dls = self._compute_jacobian(X_idxs, Y_idxs)
+        # gradient of per-example loss w.r.t. parameters
+        dls = list(zip(*[list(dl) for dl in dls]))
+        assert len(dls) == ihvp_n
+        assert len(dls[0]) == len(self.net.trainable_variables)
 
         # TF2: requires passing grad_params & outer_tape to ihvp
         self.ihvp.update(mean_loss, grad_params, outer_tape, dls)
@@ -124,6 +117,19 @@ class NNModelTF(BOModel):
 
         # Close outer tape
         self.ihvp.close()
+
+    @tf.function(experimental_relax_shapes=True)
+    def _compute_jacobian(self, X_idxs, Y_idxs):
+        with tf.GradientTape() as inner_tape:
+            Yhat_idxs = self.net(X_idxs, training=True)
+            losses = self.criterion(Y_idxs[:, tf.newaxis],
+                                    Yhat_idxs[:, tf.newaxis])  # per example
+        dls = inner_tape.jacobian(losses, self.net.trainable_variables)
+        # gradient of mean loss w.r.t. parameters
+        grad_params = [tf.reduce_mean(dl, axis=0) for dl in dls]
+        # gradient of per-example loss w.r.t. parameters
+        mean_loss = tf.reduce_mean(losses)
+        return mean_loss, grad_params, dls
 
     def _predict_single(self, x, comp_grads=True):
         """A helper for predict() and predict_withGradients() per example."""
