@@ -88,10 +88,7 @@ class NNAcqTF(AcquisitionLCB):
 
     def optimize(self, duplicate_manager=None):
         # pylint: disable=protected-access, unused-argument
-        """Override default optimizer to a gradient descent optimizer on x.
-
-        TODO(yj): fix retracing issue
-        """
+        """Override default optimizer to a gradient descent optimizer on x."""
         if self.reinit_optim_start:
             self._init_x()
 

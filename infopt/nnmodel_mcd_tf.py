@@ -1,4 +1,5 @@
-"""nnmodel_tf.py: a TensorFlow neural network model for GPyOpt."""
+"""nnmodel_mcd_tf.py: a TensorFlow neural network model with MC Dropout
+ for GPyOpt."""
 
 import random
 import numpy as np
@@ -7,24 +8,27 @@ import tensorflow as tf
 from GPyOpt.models.base import BOModel
 
 
-class NNModelTF(BOModel):
+class NNModelMCDTF(BOModel):
     """TensorFlow neural network for modeling the objective function.
 
-    TODO(yj): device control via context
-    TODO(yj): change tb_writer via context
+    The variance of the lower confidence bound (LCB) is estimated using
+    Monte Carlo Dropout (Gal & Ghahramani, 2016).
+
+    Expected to be used in conjunction with infopt.nnacq_tf.NNAcqTF .
     """
 
     def __init__(
         self,
-        net,      # tf.keras.models.Model
-        ihvp,     # infopt.nnmodel_tf.*
-        optim,    # tf.keras.optimizers.Optimizer
+        net,    # tf.keras.models.Model
+        optim,  # tf.keras.optimizers.Optimizer
         criterion=tf.keras.losses.MeanSquaredError(
             reduction=tf.keras.losses.Reduction.NONE),
         update_batch_size=np.inf,
         update_iters_per_point=25,
-        num_higs=np.inf,
-        ihvp_n=np.inf,
+        dropout=0.05,  # defined in net?
+        n_dropout_samples=100,
+        lengthscale=1e-2,
+        tau=1.0,
         ckpt_every=1,
         device="cpu",
         tb_writer=None,
@@ -32,25 +36,26 @@ class NNModelTF(BOModel):
     ):
         super().__init__()
         self.net = net
+        self.optim = optim
         self.criterion = criterion
         assert (hasattr(self.criterion, "reduction") and
                 (self.criterion.reduction == tf.keras.losses.Reduction.NONE)), (
             f"criterion must have reduction=='none', "
             f"but got {self.criterion.reduction}"
         )
-        self.ihvp = ihvp
-        self.higs = []
+        # MCD parameters
+        self.dropout = dropout
+        self.n_dropout_samples = n_dropout_samples
+        self.lengthscale = lengthscale
+        self.tau = tau
+
         self.n = 0
-        self.optim = optim
         self.update_batch_size = update_batch_size
         self.update_iters_per_point = update_iters_per_point
-        self.num_higs = num_higs
-        self.ihvp_n = ihvp_n
         self.ckpt_every = ckpt_every
         self.total_iter = 0
         self.device = device
         self.tb_writer = tb_writer
-        self.dsdx = None
 
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """Train the NN using (X_all, Y_all) and get new IHVP estimates."""
@@ -62,20 +67,26 @@ class NNModelTF(BOModel):
         n_new = len(data) - self.n
         self.n = len(data)
 
-        # Part 1: Train NN using current data points
+        # Train NN using current data points
         iters = self.update_iters_per_point * n_new
         batch_size = min(self.n, self.update_batch_size)
 
         # Change from torch: shuffle all data once before iterating through all
         shuffled_batches = data.shuffle(128).repeat().batch(batch_size)
+        # L2 regularizer determined by MC dropout
+        reg = (self.lengthscale ** 2 * (1 - self.dropout) /
+               (2. * self.n * self.tau))
         for i, (batch_X, batch_Y) in shuffled_batches.enumerate():
-            # Standard TF2 train step
+            # Standard TF2 train step + L2 regularization
             with tf.GradientTape() as tape:
                 batch_Yhat = self.net(batch_X, training=True)
                 loss = tf.reduce_mean(
                     self.criterion(batch_Y[:, tf.newaxis],
                                    batch_Yhat[:, tf.newaxis])
                 )
+                loss += reg * tf.reduce_sum([
+                    tf.reduce_sum(v ** 2) for v in self.net.trainable_variables
+                ])
             gradients = tape.gradient(loss, self.net.trainable_variables)
             self.optim.apply_gradients(zip(gradients,
                                            self.net.trainable_variables))
@@ -90,102 +101,77 @@ class NNModelTF(BOModel):
             if i >= iters - 1:
                 break
 
-        # Part 2: Update IHVP calculators (IterativeIHVP or LowRankIHVP)
-        ihvp_n = min(self.n, self.ihvp_n)
-        idxs = random.sample(range(self.n), ihvp_n)
-        X_idxs, Y_idxs = [tf.gather(t, idxs, axis=0) for t in [X, Y]]
-
-        # TF2: an active outer gradient tape must be passed to ihvp
-        #      for second-order gradient computations.
-        with tf.GradientTape(persistent=True) as outer_tape:
-            mean_loss, grad_params, dls = self._compute_jacobian(X_idxs, Y_idxs)
-        # gradient of per-example loss w.r.t. parameters
-        dls = list(zip(*[list(dl) for dl in dls]))
-        assert len(dls) == ihvp_n
-        assert len(dls[0]) == len(self.net.trainable_variables)
-
-        # TF2: requires passing grad_params & outer_tape to ihvp
-        self.ihvp.update(mean_loss, grad_params, outer_tape, dls)
-
-        # Compute H^{-1}grad(L(z)) for selected points
-        num_higs = min(len(dls), self.num_higs)
-        dls = random.sample(dls, num_higs)
-        self.higs = []
-        for dl in dls:
-            # grad(L(z)) needs to be "detached"
-            dl0 = [tf.stop_gradient(tf.identity(g)) for g in dl]
-            self.higs.append(self.ihvp.get_ihvp(dl0))
-
-        # Close outer tape
-        self.ihvp.close()
-
-    @tf.function(experimental_relax_shapes=True)
-    def _compute_jacobian(self, X_idxs, Y_idxs):
-        with tf.GradientTape() as inner_tape:
-            Yhat_idxs = self.net(X_idxs, training=True)
-            losses = self.criterion(Y_idxs[:, tf.newaxis],
-                                    Yhat_idxs[:, tf.newaxis])  # per example
-        dls = inner_tape.jacobian(losses, self.net.trainable_variables)
-        # gradient of mean loss w.r.t. parameters
-        grad_params = [tf.reduce_mean(dl, axis=0) for dl in dls]
-        # gradient of per-example loss w.r.t. parameters
-        mean_loss = tf.reduce_mean(losses)
-        return mean_loss, grad_params, dls
-
     def _predict_single(self, x, comp_grads=True):
         """A helper for predict() and predict_withGradients() per example."""
+        data = tf.data.Dataset.from_tensor_slices([x])
+        T = self.n_dropout_samples
+        batch_size = min(T, self.update_batch_size)
 
-        x = tf.Variable(x)
-        v = tf.constant(0.0, dtype=tf.float32)  # variance = sum(influence^2)
-        with tf.GradientTape(persistent=True) as outer_tape:
-            with tf.GradientTape() as inner_tape:
-                m = self.net(x, training=False)
-            grads = inner_tape.gradient(m, self.net.trainable_variables + [x])
-            dmdp, dmdx = grads[:-1], grads[-1]
+        preds, grads = [], []
+        # Batchify forwards over T dropout samples
+        for batch in data.repeat(T).batch(batch_size):
+            with tf.GradientTape() as tape:
+                tape.watch(batch)
+                yt_hat = self.net(batch, training=True)  # dropout!
+            preds.append(yt_hat)
             if comp_grads:
-                self.dmdx = dmdx
-                self.dsdx = tf.zeros_like(x, dtype=tf.float32)
+                dytdx = tape.gradient(yt_hat, batch)
+                grads.append(dytdx)
 
-            # Calculate s and dsdx
-            # hig: H^{-1}grad(L(z))
-            # influence: sum(dmdp * H^{-1}grad(L(z)))
-            dmdp_higs = [
-                [tf.reduce_sum(tf.multiply(dmdp_i, tf.squeeze(hig_i)))
-                 for dmdp_i, hig_i in zip(dmdp, hig)]
-                for hig in self.higs
-            ]
-            influences = [sum(dmdp_hig) for dmdp_hig in dmdp_higs]
-            v = tf.reduce_mean(tf.square(influences))
+        # Predictive mean & variance using dropout samples
+        preds = tf.concat(preds, axis=0)  # T x 1
+        m = tf.reduce_mean(preds, axis=0, keepdims=True)  # 1 x 1
+        v = (tf.math.reduce_variance(preds, axis=0, keepdims=True)
+             + (1. / self.tau))  # 1 x 1
+        s = tf.math.sqrt(v)  # 1 x 1
 
+        # Their gradients
         if comp_grads:
-            dmdpdx_higs = outer_tape.gradient(dmdp_higs, x)
-            self.dsdx = tf.reduce_mean([
-                influence * dmdpdx_hig
-                for influence, dmdpdx_hig in zip(influences, dmdpdx_higs)
-            ])
-
-        s = tf.math.sqrt(v)
-        if comp_grads:
-            if s > 0:
-                self.dsdx /= s  # TODO(yj): 2 * s?
+            grads = tf.concat(grads, axis=0)  # T x 1 x input_dim
+            dmdx = tf.reduce_mean(grads, axis=0)  # input_dim
+            # dsdx = dvdx / s, by chain rule (constants 2 cancelled out)
+            dvdx = tf.reduce_mean((tf.expand_dims(preds, 1) - m) * grads,
+                                  axis=0)  # 1 x input_dim
+            dsdx = dvdx / s  # 1 x input_dim
         else:
-            self.dmdx = None
-            self.dsdx = None
+            dmdx = None
+            dsdx = None
 
-        return m, s, self.dmdx, self.dsdx
+        return m, s, dmdx, dsdx
 
     def predict(self, X):
-        """Get the predicted mean and std at X."""
+        """Get the predicted mean and std at X using MC dropout.
+
+        T is the number of dropout samples obtained per input.
+        """
         M, S = [], []
         X = tf.convert_to_tensor(X, dtype=tf.float32)
         for i in range(len(X)):
-            x = X[i : i + 1]
+            x = X[i: i + 1]
             m, s, _, _ = self._predict_single(x, comp_grads=False)
             M.append(m)
             S.append(s.numpy().item())
         M = tf.concat(M, 0).numpy()
         S = np.array(S)[:, np.newaxis]
         return M, S
+
+        # Faster
+        # X = tf.convert_to_tensor(X, dtype=tf.float32)
+        # data = tf.data.Dataset.from_tensor_slices(X)
+        # batch_size = min(len(X), self.update_batch_size)
+        #
+        # # (len(X), T)
+        # predictions = tf.concat([
+        #     self.net(batch_X, training=True)  # dropout!
+        #     for batch_X in data.repeat(T).batch(batch_size)
+        # ], axis=0)
+        # predictions = tf.transpose(tf.reshape(predictions, (T, len(X))))
+        #
+        # M = tf.reduce_mean(predictions, axis=1).numpy()
+        # var = 1. / self.tau + \
+        #     tf.math.reduce_variance(predictions, axis=1).numpy()
+        # S = np.sqrt(var)
+        # return M, S
 
     def predict_withGradients(self, X):
         """Get the gradients of the predicted mean and variance at X."""

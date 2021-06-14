@@ -4,11 +4,12 @@
 Supports both TF2 and PyTorch implementations.
 """
 
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import time
-from typing import List, Callable
+from typing import Callable
 
 import tensorflow as tf
 
@@ -24,6 +25,18 @@ from GPyOpt.core.evaluators import select_evaluator
 from exputils.objectives import get_objective
 from exputils.optimization import run_optim
 
+# torch specific
+from infopt.ihvp import LowRankIHVP
+from infopt.nnacq import NNAcq
+from infopt.nnmodel import NNModel
+from exputils.models import FCNet
+
+# TF2 specific
+from infopt.ihvp_tf import LowRankIHVPTF
+from infopt.nnmodel_tf import NNModelTF
+from infopt.nnmodel_mcd_tf import NNModelMCDTF
+from infopt.nnacq_tf import NNAcqTF
+from exputils.models_tf import make_fcnet
 
 """
 Problem Setup
@@ -33,7 +46,7 @@ Problem Setup
 def setup_objective(
         obj_name: str,
         input_dim: int,
-        init_points: int = 10,
+        init_points: int = 1,
         n_layers: int = 5,
         n_units: int = 64,
         activation: str = "relu",
@@ -42,7 +55,7 @@ def setup_objective(
 ):
     """Setup synthetic minimizer objective (e.g., Ackley, Rastrigin, RandomNN).
 
-    Returns (X, Y, domain, problem).
+    Returns (problem, domain, X, Y).
     """
     # RandomNN: initialize & find minimum
     problem_cls = get_objective(obj_name)
@@ -50,7 +63,7 @@ def setup_objective(
         true_layer_sizes = [n_units] * n_layers
         problem = problem_cls(input_dim, true_layer_sizes, activation, bound,
                               initializer)
-        if input_dim < 10:
+        if input_dim < 4:
             problem.find_fmin()  # grid search
         else:
             problem.find_fmin_optim()  # L-BFGS
@@ -66,7 +79,275 @@ def setup_objective(
     space = Design_space(domain)
     X = RandomDesign(space).get_samples(init_points_count=init_points)
     Y = problem.f(X)
-    return X, Y, domain, problem
+    return problem, domain, X, Y
+
+
+"""
+Run optimization
+"""
+
+
+def run_sim_optim_gp(
+        problem,
+        domain,
+        X,
+        Y,
+        max_iter=100,
+        acquisition_type="LCB",
+        **bo_kwargs,
+):
+    """Runs standard GP optimization via GPyOpt.methods.BayesianOptimization"""
+    myBopt = BayesianOptimization(
+        f=problem.f,
+        domain=domain,
+        model_type="GP",
+        acquisition_type=acquisition_type,
+        X=X,
+        Y=Y,
+        **bo_kwargs,
+    )
+
+    t0 = time.time()
+    myBopt.run_optimization(max_iter=max_iter)
+    print("minimum:", myBopt.fx_opt)
+    print("minimizer:", myBopt.x_opt)
+    print(f"elapsed time: {time.time() - t0:.2f} seconds")
+    myBopt.plot_convergence()
+
+    return myBopt
+
+
+def run_sim_optim_torch(
+        problem,
+        domain,
+        layer_sizes=(8, 8, 4),
+        ihvp_rank=10,
+        ihvp_batch_size=8,
+        ihvp_iters_per_point=25,
+        ihvp_loss_cls=torch.nn.MSELoss,
+        ihvp_optim_cls=torch.optim.Adam,
+        ihvp_optim_params={"lr": 0.01},
+        nn_optim_cls=torch.optim.Adam,
+        nn_optim_params={"lr": 0.02},
+        criterion=F.mse_loss,
+        acq_optim_cls=torch.optim.Adam,
+        acq_optim_params={"lr": 0.05},
+        **kwargs
+):
+    """Runs NN-INF optimization using torch."""
+    input_dim = len(domain)
+    base_model = FCNet(input_dim, layer_sizes)
+    print(base_model)
+    # Use xavier initialization in RandomNN, for fair comparison with tf2
+    if problem.__class__.__name__ == "RandomNN":
+        for name, param in base_model.named_parameters():
+            if "weight" in name:
+                problem.initializer(param)
+            if "bias" in name:
+                param.data.zero_()
+
+    # IHVP
+    ihvp = LowRankIHVP(
+        base_model.parameters(),
+        ihvp_rank,
+        ihvp_batch_size,
+        ihvp_iters_per_point,
+        ihvp_loss_cls(),
+        ihvp_optim_cls,
+        ihvp_optim_params,
+    )
+
+    return run_sim_optim_nn(
+        problem,
+        domain,
+        base_model,
+        NNModel,
+        NNAcq,
+        ihvp=ihvp,
+        nn_optim_cls=nn_optim_cls,
+        nn_optim_params=nn_optim_params,
+        criterion=criterion,
+        acq_optim_cls=acq_optim_cls,
+        acq_optim_params=acq_optim_params,
+        tb_writer=SummaryWriter("logdir_sim_optim/nn_inf_torch"),
+        **kwargs
+    )
+
+
+def run_sim_optim_tf2(
+        problem,
+        domain,
+        layer_sizes=(8, 8, 4),
+        dropout=0.0,
+        ihvp_rank=10,
+        ihvp_batch_size=8,
+        ihvp_iters_per_point=25,
+        ihvp_criterion=tf.keras.losses.MeanSquaredError(),
+        ihvp_optim_cls=tf.keras.optimizers.Adam,
+        ihvp_optim_params={"learning_rate": 0.01},
+        **kwargs
+):
+    """Runs NN-INF optimization using TF2."""
+    input_dim = len(domain)
+    base_model = make_fcnet(input_dim, layer_sizes, dropout=dropout)
+    base_model.summary()
+
+    # IHVP
+    ihvp = LowRankIHVPTF(
+        base_model.trainable_variables,
+        ihvp_rank,
+        ihvp_batch_size,
+        ihvp_iters_per_point,
+        ihvp_criterion,
+        ihvp_optim_cls,
+        ihvp_optim_params,
+    )
+
+    return run_sim_optim_nn(
+        problem,
+        domain,
+        base_model,
+        NNModelTF,
+        NNAcqTF,
+        ihvp=ihvp,
+        tb_writer=SummaryWriter("logdir_sim_optim/nn_inf_tf2"),
+        **kwargs
+    )
+
+
+def run_sim_optim_mcd_tf2(
+        problem,
+        domain,
+        layer_sizes=(8, 8, 4),
+        dropout=0.1,
+        n_dropout_samples=100,
+        lengthscale=1e-2,
+        tau=0.25,
+        **kwargs
+):
+    """Runs NN-MCD optimization using TF2."""
+    input_dim = len(domain)
+    base_model = make_fcnet(input_dim, layer_sizes, dropout=dropout)
+    base_model.summary()
+
+    return run_sim_optim_nn(
+        problem,
+        domain,
+        base_model,
+        NNModelMCDTF,
+        NNAcqTF,
+        tb_writer=SummaryWriter("logdir_sim_optim/nn_mcd_tf2"),
+        **kwargs,
+        # MCD specific
+        dropout=dropout,
+        n_dropout_samples=n_dropout_samples,
+        lengthscale=lengthscale,
+        tau=tau,
+    )
+
+
+def run_sim_optim_nn(
+        problem,
+        domain,
+        base_model,
+        nn_model_cls,
+        nn_acq_cls,
+        ihvp=None,
+        max_iter=100,
+        nn_optim_cls=tf.keras.optimizers.Adam,
+        nn_optim_params={"learning_rate": 0.02},
+        criterion=tf.keras.losses.MeanSquaredError(
+            reduction=tf.keras.losses.Reduction.NONE),
+        update_batch_size=16,
+        update_iters_per_point=25,
+        ckpt_every=10,
+        num_higs=8,
+        ihvp_n=15,
+        acq_optim_cls=tf.keras.optimizers.Adam,
+        acq_optim_params={"learning_rate": 0.05},
+        acq_optim_iters=5000,
+        acq_rel_tol=1e-3,
+        lr_decay_step_size=1000,
+        lr_decay_gamma=0.2,
+        init_points=1,
+        model_update_interval=1,
+        exp_multiplier=0.1,
+        exp_gamma=0.1,
+        use_const_exp_w=None,
+        evaluator_cls=select_evaluator("sequential"),
+        evaluator_params={},
+        tb_writer=SummaryWriter("logdir_sim_optim"),
+        **nn_model_kwargs,
+):
+    """Generic routine for NN-based optimization (NN-INF, NN-MCD, etc.).
+
+    Default arguments are for TF2.
+    For torch, change the optimization and criterion classes.
+    """
+
+    # NN model for the objective
+    if issubclass(nn_optim_cls, torch.optim.Optimizer):
+        nn_optim = nn_optim_cls(base_model.parameters(), **nn_optim_params)
+    else:
+        nn_optim = nn_optim_cls(**nn_optim_params)
+    if ihvp is not None:
+        nn_model = nn_model_cls(
+            base_model,
+            ihvp,
+            nn_optim,
+            criterion=criterion,
+            update_batch_size=update_batch_size,
+            update_iters_per_point=update_iters_per_point,
+            ckpt_every=ckpt_every,
+            num_higs=num_higs,
+            ihvp_n=ihvp_n,
+            **nn_model_kwargs,
+        )
+    else:
+        nn_model = nn_model_cls(
+            base_model,
+            nn_optim,
+            criterion=criterion,
+            update_batch_size=update_batch_size,
+            update_iters_per_point=update_iters_per_point,
+            ckpt_every=ckpt_every,
+            **nn_model_kwargs,
+        )
+
+    # NN acquisition
+    space = Design_space(domain)
+    acq = nn_acq_cls(
+        nn_model,
+        space,
+        0,
+        optim_cls=acq_optim_cls,
+        optim_kwargs=acq_optim_params,
+        optim_iters=acq_optim_iters,
+        rel_tol=acq_rel_tol,
+        lr_decay_step_size=lr_decay_step_size,
+        lr_decay_gamma=lr_decay_gamma,
+    )
+
+    # Run optimization
+    optim_args = argparse.Namespace(
+        init_points=init_points,
+        optim_iters=max_iter,
+        model_update_interval=model_update_interval,
+        exp_multiplier=exp_multiplier,
+        exp_gamma=exp_gamma,
+        use_const_exp_w=use_const_exp_w,
+        evaluator_cls=evaluator_cls,
+        evaluator_params=evaluator_params,
+        tb_writer=tb_writer,
+    )
+    t0 = time.time()
+    result = run_optim(
+        problem, space, nn_model, acq, False, optim_args, eval_hook)
+    print("Elapsed Time: {:.2f}s".format(time.time() - t0))
+
+    report_result(result["bo"])
+    plot_regrets(result["regrets"], problem.name)
+    return result
 
 
 """
@@ -134,242 +415,3 @@ def plot_surface(problem, bound, minimizers, title,
     plt.colorbar(ax)
     plt.legend(bbox_to_anchor=(1.6, 1.0))
 
-
-"""
-Run optimization
-"""
-
-
-def run_sim_optim_gp(
-        X,
-        Y,
-        domain,
-        problem,
-        max_iter: int = 100,
-        acquisition_type: str = "LCB",
-        **bo_kwargs,
-):
-    """Runs standard GP optimization using
-    GPyOpt.methods.BayesianOptimization ."""
-    myBopt = BayesianOptimization(
-        f=problem.f,
-        domain=domain,
-        model_type="GP",
-        acquisition_type=acquisition_type,
-        X=X,
-        Y=Y,
-        **bo_kwargs,
-    )
-
-    t0 = time.time()
-    myBopt.run_optimization(max_iter=max_iter)
-    print("minimum:", myBopt.fx_opt)
-    print("minimizer:", myBopt.x_opt)
-    print(f"elapsed time: {time.time() - t0:.2f} seconds")
-    myBopt.plot_convergence()
-
-    return myBopt
-
-
-def run_sim_optim_torch(
-        X,
-        Y,
-        domain,
-        problem,
-        max_iter: int = 100,
-        layer_sizes: List[int] = (8, 8, 4),
-        ihvp_rank=10,
-        ihvp_batch_size=8,
-        ihvp_iters_per_point=25,
-        ihvp_loss_cls=torch.nn.MSELoss,
-        ihvp_optim_cls=torch.optim.Adam,
-        ihvp_optim_params={"lr": 0.01},
-        nn_optim_cls=torch.optim.Adam,
-        nn_optim_params={"lr": 0.01},
-        criterion=F.mse_loss,
-        update_batch_size=16,
-        num_higs=16,
-        ihvp_n=16,
-        acq_optim_cls=torch.optim.Adam,
-        acq_optim_params={"lr": 0.01},
-        acq_optim_iters=5000,
-        lr_decay_step_size=1000,
-        lr_decay_gamma=0.2,
-        **kwargs
-):
-    """Runs NN-INF optimization using torch."""
-
-    # torch specific
-    from infopt.ihvp import LowRankIHVP
-    from infopt.nnacq import NNAcq
-    from infopt.nnmodel import NNModel
-    from exputils.models import FCNet
-
-    input_dim = X.shape[1]
-    model = FCNet(input_dim, layer_sizes)
-    print(model)
-    # Use xavier initialization in RandomNN, for fair comparison with tf2
-    if problem.__class__.__name__ == "RandomNN":
-        for name, param in model.named_parameters():
-            if "weight" in name:
-                problem.initializer(param)
-            if "bias" in name:
-                param.data.zero_()
-
-    # IHVP
-    ihvp = LowRankIHVP(
-        model.parameters(),
-        ihvp_rank,
-        ihvp_batch_size,
-        ihvp_iters_per_point,
-        ihvp_loss_cls(),
-        ihvp_optim_cls,
-        ihvp_optim_params,
-    )
-
-    # NN model for the objective
-    nn_optim = nn_optim_cls(model.parameters(), **nn_optim_params)
-    nn_model = NNModel(
-        model,
-        ihvp,
-        nn_optim,
-        criterion=criterion,
-        update_batch_size=update_batch_size,
-        num_higs=num_higs,
-        ihvp_n=ihvp_n,
-    )
-
-    # NN acquisition
-    space = Design_space(domain)
-    acq = NNAcq(
-        nn_model,
-        space,
-        0,  # reset by run_optim
-        optim_cls=acq_optim_cls,
-        optim_kwargs=acq_optim_params,
-        optim_iters=acq_optim_iters,
-        lr_decay_step_size=lr_decay_step_size,
-        lr_decay_gamma=lr_decay_gamma,
-    )
-
-    # Run optimization
-    writer = SummaryWriter("logdir_torch")
-    import argparse
-    optim_args = argparse.Namespace(
-        init_points=10,
-        optim_iters=max_iter,
-        model_update_interval=1,
-        exp_multiplier=0.01,
-        exp_gamma=0.1,
-        use_const_exp_w=None,
-        evaluator_cls=select_evaluator("sequential"),
-        evaluator_params={},
-        tb_writer=writer,
-    )
-    t0 = time.time()
-    result = run_optim(
-        problem, space, nn_model, acq, False, optim_args, eval_hook)
-    print("Elapsed Time: {:.2f}s".format(time.time() - t0))
-
-    report_result(result["bo"])
-    plot_regrets(result["regrets"], problem.name)
-    return result
-
-
-def run_sim_optim_tf2(
-        X,
-        Y,
-        domain,
-        problem,
-        max_iter: int = 100,
-        layer_sizes: List[int] = (8, 8, 4),
-        ihvp_rank=10,
-        ihvp_batch_size=8,
-        ihvp_iters_per_point=25,
-        ihvp_criterion=tf.keras.losses.MeanSquaredError(),
-        ihvp_optim_cls=tf.keras.optimizers.Adam,
-        ihvp_optim_params={"learning_rate": 0.01},
-        nn_optim_cls=tf.keras.optimizers.Adam,
-        nn_optim_params={"learning_rate": 0.01},
-        criterion=tf.keras.losses.MeanSquaredError(
-            reduction=tf.keras.losses.Reduction.NONE),
-        update_batch_size=16,
-        num_higs=16,
-        ihvp_n=16,
-        acq_optim_cls=tf.keras.optimizers.Adam,
-        acq_optim_params={"learning_rate": 0.01},
-        acq_optim_iters=5000,
-        lr_decay_step_size=1000,
-        lr_decay_gamma=0.2,
-        **kwargs
-):
-    """Runs NN-INF optimization using TF2."""
-
-    # TF2 specific
-    from infopt.ihvp_tf import LowRankIHVPTF
-    from infopt.nnmodel_tf import NNModelTF
-    from infopt.nnacq_tf import NNAcqTF
-    from exputils.models_tf import make_fcnet
-
-    input_dim = X.shape[1]
-    model = make_fcnet(input_dim, layer_sizes)
-    model.summary()
-
-    # IHVP
-    ihvp = LowRankIHVPTF(
-        model.trainable_variables,
-        ihvp_rank,
-        ihvp_batch_size,
-        ihvp_iters_per_point,
-        ihvp_criterion,
-        ihvp_optim_cls,
-        ihvp_optim_params,
-    )
-
-    # NN model for the objective
-    nn_optim = nn_optim_cls(**nn_optim_params)
-    nn_model = NNModelTF(
-        model,
-        ihvp,
-        nn_optim,
-        criterion=criterion,
-        update_batch_size=update_batch_size,
-        num_higs=num_higs,
-        ihvp_n=ihvp_n,
-    )
-
-    # NN acquisition
-    space = Design_space(domain)
-    acq = NNAcqTF(
-        nn_model,
-        space,
-        0,
-        optim_cls=acq_optim_cls,
-        optim_kwargs=acq_optim_params,
-        optim_iters=acq_optim_iters,
-        lr_decay_step_size=lr_decay_step_size,
-        lr_decay_gamma=lr_decay_gamma,
-    )
-
-    # Run optimization
-    writer = SummaryWriter("logdir_torch")
-    import argparse
-    optim_args = argparse.Namespace(
-        init_points=10,
-        optim_iters=max_iter,
-        model_update_interval=1,
-        exp_multiplier=0.01,
-        exp_gamma=0.1,
-        use_const_exp_w=None,
-        evaluator_cls=select_evaluator("sequential"),
-        evaluator_params={},
-        tb_writer=writer,
-    )
-    t0 = time.time()
-    result = run_optim(
-        problem, space, nn_model, acq, False, optim_args, eval_hook)
-    print("Elapsed Time: {:.2f}s".format(time.time() - t0))
-
-    report_result(result["bo"])
-    plot_regrets(result["regrets"], problem.name)
-    return result
