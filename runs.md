@@ -11,6 +11,7 @@ Supported Python versions: 3.7.x or 3.8.x.
 2. Clone this repository and install dependencies via `poetry`:
     ```shell
     git clone https://github.com/jayanthkoushik/infopt
+    cd infopt
     poetry install --extras "test experiments"
     ```
 3. Use `poetry`'s virtual environment:

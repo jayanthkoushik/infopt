@@ -4,9 +4,6 @@ This document describes the Tensorflow 2 part-extension of the original `infopt`
 As of now, it is more of an informal "fork" that only includes a subset of functionalities required for the AFRL 
 project.
 
-If you're only interested in reproducing the original results using NN-INF (in torch), 
-see [here](runs.md) instead.
-
 Please send questions to [YJ](mailto:yjchoe@cmu.edu).
 
 ## Installation
@@ -19,9 +16,22 @@ If you've already installed the master version of the package, simply call:
 ```shell
 poetry add tensorflow@^2.4.1
 ```
-Otherwise, checkout+pull this branch (`tf2`) and then follow steps in [`runs.md#Installation`](runs.md#installation).
+Otherwise, follow steps in [`runs.md#Installation`](runs.md#installation), but clone this branch (`tf2`):
+```shell
+git clone -b tf2 https://github.com/jayanthkoushik/infopt
+```
 
-## Code Extensions
+## Getting Started
+
+If you'd like to run additional experiments involving TF2 and/or NN-MCD, 
+you'd want to start with [`test_mcdropout_ackley.ipynb`](test_mcdropout_ackley.ipynb) as an example, and 
+perhaps modify/add methods in [`exp_sim_optim_simple.py`](exp_sim_optim_simple.py) and 
+in [`exputils/objectives.py`](exputils/objectives.py).
+
+If you're only interested in reproducing the original results using NN-INF (in torch), 
+checkout the master branch and follow the instructions [here](runs.md) instead.
+
+## List of Code Extensions
 
 All implementations are subject to additional testing. 
 
@@ -45,9 +55,4 @@ All implementations are subject to additional testing.
         - [`test_torch2tf_ackley.ipynb`](test_torch2tf_ackley.ipynb)
         - [`test_torch2tf_randomnn.ipynb`](test_torch2tf_randomnn.ipynb)
     
-If you'd like to run additional experiments involving TF2 and/or NN-MCD, 
-you'd want to start with [`test_mcdropout_ackley.ipynb`](test_mcdropout_ackley.ipynb) as an example, and 
-perhaps modify/add methods in [`exp_sim_optim_simple.py`](exp_sim_optim_simple.py) and 
-in [`exputils/objectives.py`](exputils/objectives.py).
-
 
