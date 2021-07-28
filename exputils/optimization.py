@@ -72,10 +72,13 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
     inst_regrets = []
     regrets = []
     iter_times = []
+    mu_min, sig_min = [], []
+    mu_at_min, sig_at_min = [], []
 
     def new_evaluate_objective(self):
         nonlocal fmin_hat, inst_regrets, regrets, iter_times
         nonlocal timer, postfix_dict, pbar, args
+        nonlocal mu_min, sig_min, mu_at_min, sig_at_min
         self.evaluate_objective_orig()
         pbar.update(1)
 
@@ -104,6 +107,12 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
 
         if eval_hook is not None:
             eval_hook(pbar.n, bo, postfix_dict)
+            if "μ*" in postfix_dict:
+                mu_min.append(postfix_dict["μ*"])
+                sig_min.append(postfix_dict["σ*"])
+            if "μ(x*)" in postfix_dict:
+                mu_at_min.append(postfix_dict["μ(x*)"])
+                sig_at_min.append(postfix_dict["σ(x*)"])
 
         if args.tb_writer is not None:
             if fun.fmin is not None:
@@ -140,10 +149,17 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
     with trange(args.optim_iters, desc="Optimizing", leave=True) as pbar:
         bo.run_optimization(args.optim_iters, eps=-1)
 
-    result = {"iter_times": iter_times, "X": bo.X, "y": bo.Y, "bo": bo}
+    result = {"iter_times": iter_times, "X": bo.X, "y": bo.Y, "bo": bo,
+              "runtime": time.time() - timer}
     if inst_regrets:
         result["inst_regrets"] = inst_regrets
         result["regrets"] = regrets
+    if mu_min:
+        result["μ*"] = mu_min
+        result["σ*"] = sig_min
+    if mu_at_min:
+        result["μ(x*)"] = mu_at_min
+        result["σ(x*)"] = sig_at_min
     return result
 
 

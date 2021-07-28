@@ -17,6 +17,7 @@ from shinyutils import (
 from shinyutils.matwrap import MatWrap as mw
 
 import GPyOpt
+from GPyOpt.experiment_design import RandomDesign
 import numpy as np
 import torch
 import torch.nn.init as init
@@ -70,7 +71,7 @@ def main():
         metavar="key=value,[...]",
         default=dict(),
     )
-    obj_parser.add_argument("--obj-bounds", type=float, nargs=2, default=[-5, 5])
+    obj_parser.add_argument("--obj-bounds", type=float, nargs=2, default=[-10, 10])
     obj_parser.add_argument(
         "--no-save-target-model",
         action="store_false",
@@ -84,6 +85,8 @@ def main():
     )
     objopt_parser.add_argument("--obj-opt-span-n", type=int, default=1000)
     objopt_parser.add_argument("--obj-opt-batch-size", type=int, default=None)
+    objopt_parser.add_argument("--obj-opt-lbfgs", action="store_true")
+    objopt_parser.add_argument("--obj-opt-max-iters", type=int, default=5000)
 
     make_optim_parser(run_parser)
 
@@ -120,6 +123,12 @@ def main():
     ploto_parser.set_defaults(func=partial(plot_performance, y="y"))
     make_plot_parser(ploto_parser)
 
+    plotp_parser = sub_parsers.add_parser(
+        "plot-performance", formatter_class=LazyHelpFormatter
+    )
+    plotp_parser.set_defaults(func=plot_performance)
+    make_plot_parser(plotp_parser)
+
     plott_parser = sub_parsers.add_parser(
         "plot-timing", formatter_class=LazyHelpFormatter
     )
@@ -133,7 +142,10 @@ def main():
         logging.info(
             f"clearml logging enabled under 'infopt_nnet_optim/{args.clearml_task}'"
         )
-    args.func(args)
+    if os.path.exists(args.save_dir.name):
+        logging.info("save file %s exists, skipping", args.save_file.name)
+    else:
+        args.func(args)
 
 
 def run(args):
@@ -183,6 +195,9 @@ def run(args):
         x_span = torch.linspace(*args.obj_bounds, args.obj_opt_span_n).unsqueeze(1)
         y_span = predict_batchly(tnet, x_span, args.obj_opt_batch_size)
         obj.fmin = y_span.min().item()
+    elif args.obj_opt:
+        obj.find_fmin(max_iters=args.obj_opt_max_iters, bounds=args.obj_bounds)
+        logging.info(f"L-BFGS minimum: {obj.fmin:.5f} at {obj.min}")
 
     bounds = [
         {"name": f"x_{i}", "type": "continuous", "domain": args.obj_bounds}
@@ -200,13 +215,77 @@ def run(args):
         model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
         normalize_Y = False
 
+    mu_mins, sig_mins, acq_mins, y_mins, mse, test_mse = [], [], [], [], [], []
+    mu_at_mins, sig_at_mins, acq_at_mins, exp_w = [], [], [], []
+    X_test = RandomDesign(space).get_samples(init_points_count=200)
+    Y_test = obj.f(X_test)
+
+    def eval_hook(n, bo, postfix_dict):
+        # pylint: disable=unused-argument
+        nonlocal mu_mins, sig_mins, acq_mins, y_mins, mse, test_mse
+        nonlocal mu_at_mins, sig_at_mins, acq_at_mins, exp_w
+        nonlocal obj
+        nonlocal X_test, Y_test
+
+        m, s = bo.Y.mean(), bo.Y.std()
+
+        def _unnormalize(_mus, _sigs):
+            if s > 0:
+                _mus *= s
+                _sigs *= s
+            _mus += m
+            return _mus, _sigs
+
+        # TODO: handle mcmc case
+        # prediction at the last acquisition (lowest LCB by model)
+        mus, sigs = bo.model.predict(bo.X)
+        if bo.normalize_Y:
+            mus, sigs = _unnormalize(mus, sigs)
+        mu_min, sig_min = mus[-1], sigs[-1]
+        _exp_w = bo.acquisition.exploration_weight
+        acq_min = -mu_min + _exp_w * sig_min
+        mu_mins.append(mu_min.item())
+        sig_mins.append(sig_min.item())
+        acq_mins.append(acq_min.item())
+        exp_w.append(_exp_w)
+        postfix_dict["μ*"] = mu_mins[-1]
+        postfix_dict["σ*"] = sig_mins[-1]
+        postfix_dict["α*"] = acq_mins[-1]
+
+        # Y_min & MSE (for t-1)
+        ys = bo.Y[:-1]
+        y_mins.append(ys.min())
+        postfix_dict["y_min"] = y_mins[-1]
+        mse.append(np.mean((mus[:-1] - ys) ** 2))
+        postfix_dict["mse"] = mse[-1]
+        # Test MSE
+        mus_test, sigs_test = bo.model.predict(X_test)
+        if bo.normalize_Y:
+            mus_test, sigs_test = _unnormalize(mus_test, sigs_test)
+        test_mse.append(np.mean((mus_test - Y_test) ** 2))
+        postfix_dict["test_mse"] = test_mse[-1]
+
+        # prediction at actual minimum
+        if obj.fmin is not None:
+            mu_at_min, sig_at_min = bo.model.predict(np.array([obj.min]))
+            if bo.normalize_Y:
+                mu_at_min, sig_at_min = _unnormalize(mu_at_min, sig_at_min)
+            acq_at_min = -mu_min + _exp_w * sig_min
+            mu_at_mins.append(mu_at_min.item())
+            sig_at_mins.append(sig_at_min.item())
+            acq_at_mins.append(acq_at_min.item())
+            postfix_dict["μ(x*)"] = mu_at_mins[-1]
+            postfix_dict["σ(x*)"] = sig_at_mins[-1]
+            postfix_dict["α(x*)"] = acq_at_mins[-1]
+
     if not args.mname:
         logging.warning("model not specified: no optimization performed")
         result = dict()
     else:
-        result = run_optim(obj, space, model, acq, normalize_Y, args)
+        result = run_optim(obj, space, model, acq, normalize_Y, args, eval_hook)
         del result["bo"]
 
+    del args.func
     if args.tb_writer is not None:
         args.tb_writer.close()
     del args.tb_writer
@@ -215,6 +294,20 @@ def run(args):
     del args.load_target
     result["fmin"] = obj.fmin
     result["args"] = vars(args)
+    result.update({
+        "mu_mins": mu_mins,
+        "sig_mins": sig_mins,
+        "acq_mins": acq_mins,
+        "exp_w": exp_w,
+        "mse": mse,
+        "test_mse": test_mse,
+        "X_test": X_test,
+        "Y_test": Y_test,
+        "y_mins": y_mins,
+        "mu_at_mins": mu_at_mins,
+        "sig_at_mins": sig_at_mins,
+        "acq_at_mins": acq_at_mins,
+    })
     with open(os.path.join(args.save_dir, "save_data.pkl"), "wb") as f:
         pickle.dump(result, f)
 
@@ -262,6 +355,7 @@ class TargetNetObj:
     def __init__(
         self, in_dim=None, layer_sizes=None, w_init=None, b_init=None, tnet=None
     ):
+        self.min = None
         self.fmin = None
         if tnet is not None:
             self.tnet = tnet
@@ -287,6 +381,36 @@ class TargetNetObj:
         x = torch.from_numpy(x.astype(np.float32)).to(DEVICE)
         y = self.tnet(x)
         return y.detach().cpu().numpy()
+
+    def f_noiseless(self, x):
+        return self.f(x)
+
+    def find_fmin(self, optimizer_cls=torch.optim.LBFGS,
+                  max_iters=5000, bounds=(-np.inf, np.inf)):
+        """Find minimizer of the random neural network using an optimizer.
+
+        Defaults to L-BFGS.
+        """
+        x = torch.zeros(self.tnet.in_dim, requires_grad=True, device=DEVICE)
+        optimizer = optimizer_cls([x])
+        self.fmin = np.inf
+        for i in range(max_iters):
+
+            def _closure():
+                """Called multiple times in LBFGS."""
+                x.data.clamp_(*bounds)
+                optimizer.zero_grad()
+                f = self.tnet(x)
+                f.backward()
+                return f
+
+            optimizer.step(_closure)
+
+            x.data.clamp_(*bounds)
+            fval = self.tnet(x).item()
+            if fval < self.fmin:
+                self.min = x.detach().cpu().numpy()
+                self.fmin = fval
 
 
 def predict_batchly(net, X, batch_size=None):

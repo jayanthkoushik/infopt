@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from clearml import Task as ClearMLTask
 from GPyOpt import Design_space
+from GPyOpt.experiment_design import RandomDesign
 from GPyOpt.objective_examples.experiments1d import forrester
 from GPyOpt.objective_examples.experiments2d import (
     beale,
@@ -50,6 +51,7 @@ from exputils.parsing import (
     TensorboardWriterType,
 )
 from exputils.plotting import plot_performance, plot_timing
+from exputils.objectives import Ackley
 
 
 def main():
@@ -91,6 +93,7 @@ def main():
             required=True,
             metavar="int,int[,...]",
         )
+        mname_parser.add_argument("--dropout", type=float, default=0.0)
         make_nn_nr_parser(mname_parser, _mname)
 
     run_offnn_parser = sub_parsers.add_parser(
@@ -166,7 +169,10 @@ def main():
         logging.info(
             f"clearml logging enabled under 'infopt_sim_optim/{args.clearml_task}'"
         )
-    args.func(args)
+    if os.path.exists(args.save_file.name) and os.path.getsize(args.save_file.name) > 0:
+        logging.info("save file %s exists, skipping", args.save_file.name)
+    else:
+        args.func(args)
 
 
 def run(args):
@@ -272,25 +278,75 @@ def run(args):
             ).to(DEVICE)
             model, acq = model_nr(base_model, space, args, acq_fast_project)
         else:
-            base_model = FCNet(args.fdim, args.layer_sizes).to(DEVICE)
+            base_model = FCNet(args.fdim, args.layer_sizes, dropout=args.dropout).to(DEVICE)
             model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
 
         logging.debug(base_model)
         normalize_Y = False
 
-    mu_mins = []
-    sig_mins = []
+    mu_mins, sig_mins, acq_mins, y_mins, mse, test_mse = [], [], [], [], [], []
+    mu_at_mins, sig_at_mins, acq_at_mins, exp_w = [], [], [], []
+    X_test = RandomDesign(space).get_samples(init_points_count=200)
+    with redirect_stdout(open(os.devnull, "w")):
+        Y_test = fun.f(X_test)
 
     def eval_hook(n, bo, postfix_dict):
         # pylint: disable=unused-argument
-        nonlocal mu_mins, sig_mins
-        mu_min, sig_min = bo.model.predict(bo.X[np.newaxis, -1])
-        if getattr(args, "mcmc", False):
-            mu_min, sig_min = mu_min[-1], sig_min[-1]
+        nonlocal mu_mins, sig_mins, acq_mins, y_mins, mse, test_mse
+        nonlocal mu_at_mins, sig_at_mins, acq_at_mins, exp_w
+        nonlocal fun
+        nonlocal X_test, Y_test
+
+        m, s = bo.Y.mean(), bo.Y.std()
+
+        def _unnormalize(_mus, _sigs):
+            if s > 0:
+                _mus *= s
+                _sigs *= s
+            _mus += m
+            return _mus, _sigs
+
+        # TODO: handle mcmc case
+        # prediction at the last acquisition (lowest LCB by model)
+        mus, sigs = bo.model.predict(bo.X)
+        if bo.normalize_Y:
+            mus, sigs = _unnormalize(mus, sigs)
+        mu_min, sig_min = mus[-1], sigs[-1]
+        _exp_w = bo.acquisition.exploration_weight
+        acq_min = -mu_min + _exp_w * sig_min
         mu_mins.append(mu_min.item())
         sig_mins.append(sig_min.item())
+        acq_mins.append(acq_min.item())
+        exp_w.append(_exp_w)
         postfix_dict["μ*"] = mu_mins[-1]
         postfix_dict["σ*"] = sig_mins[-1]
+        postfix_dict["α*"] = acq_mins[-1]
+
+        # Y_min & MSE (for t-1)
+        ys = bo.Y[:-1]
+        y_mins.append(ys.min())
+        postfix_dict["y_min"] = y_mins[-1]
+        mse.append(np.mean((mus[:-1] - ys) ** 2))
+        postfix_dict["mse"] = mse[-1]
+        # Test MSE
+        mus_test, sigs_test = bo.model.predict(X_test)
+        if bo.normalize_Y:
+            mus_test, sigs_test = _unnormalize(mus_test, sigs_test)
+        test_mse.append(np.mean((mus_test - Y_test) ** 2))
+        postfix_dict["test_mse"] = test_mse[-1]
+
+        # prediction at actual minimum
+        if fun.fmin is not None:
+            mu_at_min, sig_at_min = bo.model.predict(np.array([fun.min]))
+            if bo.normalize_Y:
+                mu_at_min, sig_at_min = _unnormalize(mu_at_min, sig_at_min)
+            acq_at_min = -mu_min + _exp_w * sig_min
+            mu_at_mins.append(mu_at_min.item())
+            sig_at_mins.append(sig_at_min.item())
+            acq_at_mins.append(acq_at_min.item())
+            postfix_dict["μ(x*)"] = mu_at_mins[-1]
+            postfix_dict["σ(x*)"] = sig_at_mins[-1]
+            postfix_dict["α(x*)"] = acq_at_mins[-1]
 
     if args.fname == "ackley":
         # ackley has a print statement inside -_-
@@ -306,9 +362,22 @@ def run(args):
         args.tb_writer.close()
     del args.tb_writer
     del result["bo"]
+    result["fmin"] = fun.fmin
     result["args"] = vars(args)
-    result["mu_mins"] = mu_mins
-    result["sig_mins"] = sig_mins
+    result.update({
+        "mu_mins": mu_mins,
+        "sig_mins": sig_mins,
+        "acq_mins": acq_mins,
+        "exp_w": exp_w,
+        "mse": mse,
+        "test_mse": test_mse,
+        "X_test": X_test,
+        "Y_test": Y_test,
+        "y_mins": y_mins,
+        "mu_at_mins": mu_at_mins,
+        "sig_at_mins": sig_at_mins,
+        "acq_at_mins": acq_at_mins,
+    })
     pickle.dump(result, save_file.buffer)
     save_file.close()
 
@@ -519,7 +588,7 @@ fix_init_input_dim(sixhumpcamel, 2)
 
 
 FS = {
-    "ackley": ackley,
+    "ackley": Ackley,
     "alpine1": alpine1,
     "alpine2": alpine2,
     "beale": beale,

@@ -12,7 +12,7 @@ All required packages should be installed via `poetry`, as done in [`runs.md#Ins
 The `poetry.lock` and `pyproject.toml` files in this branch (`tf2`) include an additional installation of 
 `tensorflow==2.4.1`.
 
-If you've already installed the master version of the package, simply call:
+If you've already installed the master version of the package, simply add:
 ```shell
 poetry add tensorflow@^2.4.1
 ```
@@ -56,3 +56,37 @@ All implementations are subject to additional testing.
         - [`test_torch2tf_randomnn.ipynb`](test_torch2tf_randomnn.ipynb)
     
 
+## Ackley Experiments
+
+CPU:
+```shell
+cd infopt
+srun -p cpu --cpus-per-task=8 --gres=gpu:0 --mem=24GB --time=8:00:00 --pty $SHELL
+poetry shell
+python run_exp_sim_optim_simple.py nninf
+```
+
+GPU:
+```shell
+cd infopt
+srun -p gpu --cpus-per-task=8 --gres=gpu:1 --mem=40GB --time=12:00:00 --nodelist=mind-1-30 --pty $SHELL
+module load cuda-11.1.1 cudnn-11.1.1-v8.0.4.30
+# cudnn path is incorrect :(
+export LD_LIBRARY_PATH=/opt/cudnn/cuda-11.1/8.0.4.30/cuda/lib64:/opt/cuda/11.1.1/lib64:/opt/cuda/11.1.1/extras/CUPTI/lib64
+poetry shell
+python run_exp_sim_optim_simple.py nninf
+```
+
+Plot regrets and timing, except the torch results:
+```shell
+# 2d
+python plot_exp_sim_optim_simple.py plot-regrets --res-dir simple_results/ackley2d \
+--save-file simple_results/ackley2d/regrets.pdf
+python plot_exp_sim_optim_simple.py plot-timing --res-dir simple_results/ackley2d \
+--save-file simple_results/ackley2d/runtime.pdf
+# 10d
+python plot_exp_sim_optim_simple.py plot-regrets --res-dir simple_results/ackley10d \
+--save-file simple_results/ackley10d/regrets.pdf --skip-pats simple_results/ackley10d/nninftorch
+python plot_exp_sim_optim_simple.py plot-timing --res-dir simple_results/ackley10d \
+--save-file simple_results/ackley10d/runtime.pdf --skip-pats simple_results/ackley10d/nninftorch
+```

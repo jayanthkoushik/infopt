@@ -14,6 +14,9 @@ class NNModelTF(BOModel):
     TODO(yj): change tb_writer via context
     """
 
+    MCMC_sampler = False
+    analytical_gradient_prediction = True
+
     def __init__(
         self,
         net,      # tf.keras.models.Model
@@ -25,6 +28,7 @@ class NNModelTF(BOModel):
         update_iters_per_point=25,
         num_higs=np.inf,
         ihvp_n=np.inf,
+        weight_decay=1e-5,
         ckpt_every=1,
         device="cpu",
         tb_writer=None,
@@ -46,6 +50,7 @@ class NNModelTF(BOModel):
         self.update_iters_per_point = update_iters_per_point
         self.num_higs = num_higs
         self.ihvp_n = ihvp_n
+        self.weight_decay = weight_decay
         self.ckpt_every = ckpt_every
         self.total_iter = 0
         self.device = device
@@ -76,6 +81,11 @@ class NNModelTF(BOModel):
                     self.criterion(batch_Y[:, tf.newaxis],
                                    batch_Yhat[:, tf.newaxis])
                 )
+                if self.weight_decay > 0.0:
+                    loss += self.weight_decay * tf.reduce_sum([
+                        tf.reduce_sum(v ** 2)
+                        for v in self.net.trainable_variables
+                    ])
             gradients = tape.gradient(loss, self.net.trainable_variables)
             self.optim.apply_gradients(zip(gradients,
                                            self.net.trainable_variables))

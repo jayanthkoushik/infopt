@@ -24,7 +24,23 @@ def load_save_data(res_dir, skip_pats):
 
         mname = res["args"]["mname"].upper()
         if mname == "NN":
-            acq_type = "INF"
+            # handle greedy case (exploration weight == 0)
+            if (res["args"]["use_const_exp_w"] == 0.0 or
+                    res["args"]["exp_multiplier"] == 0.0):
+                acq_type = "Greedy"
+            else:
+                acq_type = "INF"
+            # sub-categorize by acquisition types
+            acq_optim_name = res["args"]["acq_optim_cls"].__name__
+            acq_type += (
+                f" ({acq_optim_name})" if acq_optim_name != "Adam" else ""
+            )
+            # TODO: remove
+            if "obj_layer_sizes" in res["args"]:
+                if res["args"]["model_layer_sizes"] == res["args"]["obj_layer_sizes"]:
+                    acq_type += " (Same)"
+                else:
+                    acq_type += " (Small)"
         elif mname == "NR":
             if res["args"]["use_nrif"]:
                 acq_type = "INF"
@@ -95,9 +111,10 @@ def plot_performance(args, y="R", data_df=None):
     fig.savefig(args.save_file.name)
 
 
-def plot_timing(args):
+def plot_timing(args, data_df=None):
     mw.configure(args.plotting_context, args.plotting_style, args.plotting_font)
-    data_df = load_save_data(args.res_dir, args.skip_pats)
+    if data_df is None:
+        data_df = load_save_data(args.res_dir, args.skip_pats)
     data_df = data_df[data_df["t"] % args.model_update_interval == 0]
     models = data_df["Model"].unique()
     n_models = len(models)
@@ -126,6 +143,6 @@ def plot_timing(args):
     ax.yaxis.tick_right()
     ax.set_xlabel("$t$")
     ax.set_ylabel("Iteration time (s)")
-    if args.set_size:
+    if args.fig_size:
         fig.set_size_inches(*args.fig_size)
     fig.savefig(args.save_file.name)

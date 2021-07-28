@@ -6,6 +6,7 @@ import sys
 import GPyOpt.acquisitions
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from GPyOpt.models import GPModel, GPModel_MCMC
 
 from exputils.nrmodel import NRIFModel, NRModel
@@ -135,7 +136,7 @@ def model_gp(space, args, exact_feval=True):
 
 
 class FCNet(nn.Module):
-    def __init__(self, in_dim, layer_sizes, nonlin=torch.relu):
+    def __init__(self, in_dim, layer_sizes, nonlin=torch.relu, dropout=0.0):
         super().__init__()
         self.in_dim = in_dim
         layer_sizes = [in_dim] + layer_sizes
@@ -146,10 +147,11 @@ class FCNet(nn.Module):
         self.fc_last = nn.Linear(layer_sizes[-1], 1)
         self.scale = nn.Linear(1, 1)
         self.nonlin = nonlin
+        self.dropout = dropout
 
     def forward(self, x):
         for layer in self.layers:
-            x = self.nonlin(layer(x))
+            x = F.dropout(self.nonlin(layer(x)), self.dropout)
         x = torch.tanh(self.fc_last(x))
         x = self.scale(x)
         return x

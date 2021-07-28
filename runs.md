@@ -34,12 +34,34 @@ python exp_sim_optim.py run \
     --save-file results/ackley2d/gp001.pkl --tb-dir logdir/ackley2d/gp001 \
     gp --acq-type lcb
 # ...
+# NN-INF on Ackley 5D, repeat 20 times
+for i in $(seq -w 1 20); do
+   python exp_sim_optim.py run \
+       --fname ackley --fdim 5 --init-points 1 --optim-iters 100 \
+       --save-file "results/ackley5d/nn$i.pkl" --tb-dir "logdir/ackley5d/nn$i" \
+       nn --layer-sizes "32,32,16"
+done
+for i in $(seq -w 1 20); do
+   python exp_sim_optim.py run \
+       --fname ackley --fdim 5 --init-points 1 --optim-iters 100 \
+       --save-file "results/ackley5d/nn$i.pkl" --tb-dir "logdir/ackley5d/nn$i" \
+       nn --layer-sizes "256,256,256,128"
+done
+# GP-LCB on Ackley 5D, repeat 20 times
+for i in $(seq -w 1 20); do
+   python exp_sim_optim.py run \
+       --fname ackley --fdim 5 --init-points 1 --optim-iters 100 \
+       --save-file "results/ackley5d/gp$i.pkl" --tb-dir "logdir/ackley5d/gp$i" \
+       gp --acq-type lcb
+done
 ```
 
 Plot regrets (together):
 ```shell
 python exp_sim_optim.py plot-regrets \
     --res-dir results/ackley2d --save-file results/ackley2d/regrets.pdf
+python exp_sim_optim.py plot-regrets \
+    --res-dir results/ackley5d --save-file results/ackley5d/regrets.pdf
 ```
 
 ## Hyperparameter Options
