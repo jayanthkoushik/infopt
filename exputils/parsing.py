@@ -20,6 +20,11 @@ from GPyOpt.core.evaluators.base import EvaluatorBase
 from torch.nn.modules.loss import _Loss, MSELoss
 from torch.optim import Adam, Optimizer
 from torch.utils.tensorboard import SummaryWriter
+try:
+    import tensorflow as tf
+    HAS_TF = True
+except ImportError:
+    HAS_TF = False
 
 base_arg_parser = argparse.ArgumentParser(formatter_class=LazyHelpFormatter)
 build_log_argp(base_arg_parser)
@@ -102,6 +107,92 @@ def make_nn_nr_parser(parser, mname):
         type=KeyValuePairsType(),
         metavar="key=value,[...]",
         default=dict(lr=0.05),
+    )
+    nnacq_parser.add_argument("--acq-optim-iters", type=int, default=5000)
+    nnacq_parser.add_argument("--acq-optim-lr-decay-step-size", type=int, default=1000)
+    nnacq_parser.add_argument("--acq-optim-lr-decay-gamma", type=float, default=0.2)
+    nnacq_parser.add_argument("--acq-ckpt-every", type=int, default=1000)
+    nnacq_parser.add_argument("--acq-rel-tol", type=float, default=1e-3)
+    nnacq_parser.add_argument(
+        "--no-acq-reinit-optim-start",
+        action="store_false",
+        dest="acq_reinit_optim_start",
+        default=True,
+    )
+
+
+def make_nn_tf2_parser(parser, mname):
+    """Add parser options for nninf/nnmcd in tf2."""
+    assert mname in ("nn_tf2", "nnmcd_tf2")
+
+    if mname == "nn_tf2":
+        ihvp_parser = parser.add_argument_group("model low-rank ihvp")
+        ihvp_parser.add_argument("--ihvp-rank", type=int, default=10)
+        ihvp_parser.add_argument("--ihvp-batch-size", type=int, default=8)
+        ihvp_parser.add_argument(
+            "--ihvp-optim-cls",
+            type=ClassType(tf.keras.optimizers.Optimizer),
+            metavar="optimizer",
+            default=tf.keras.optimizers.Adam,
+        )
+        ihvp_parser.add_argument(
+            "--ihvp-optim-params",
+            type=KeyValuePairsType(),
+            metavar="key=value,[...]",
+            default=dict(learning_rate=0.01),
+        )
+        ihvp_parser.add_argument("--ihvp-ckpt-every", type=int, default=25)
+        ihvp_parser.add_argument("--ihvp-iters-per-point", type=int, default=25)
+        ihvp_parser.add_argument(
+            "--ihvp-loss-cls",
+            type=ClassType(tf.keras.losses.Loss),
+            metavar="loss",
+            default=tf.keras.losses.MeanSquaredError,
+        )
+
+    nn_boparser = parser.add_argument_group("model wrapper for gpyopt")
+    nn_boparser.add_argument(
+        "--bom-optim-cls",
+        type=ClassType(tf.keras.optimizers.Optimizer),
+        metavar="optimizer",
+        default=tf.keras.optimizers.Adam,
+    )
+    nn_boparser.add_argument(
+        "--bom-optim-params",
+        type=KeyValuePairsType(),
+        metavar="key=value,[...]",
+        default=dict(learning_rate=0.02),
+    )
+    nn_boparser.add_argument("--bom-up-batch-size", type=int, default=16)
+    nn_boparser.add_argument("--bom-up-iters-per-point", type=int, default=50)
+    nn_boparser.add_argument("--bom-n-higs", type=int, default=8)
+    nn_boparser.add_argument("--bom-ihvp-n", type=int, default=15)
+    nn_boparser.add_argument("--bom-ckpt-every", type=int, default=25)
+    nn_boparser.add_argument(
+        "--bom-loss-cls",
+        type=ClassType(tf.keras.losses.Loss),
+        default=tf.keras.losses.MeanSquaredError,
+    )
+    nn_boparser.add_argument("--bom-weight-decay", type=float, default=0.0)
+    if mname == "nnmcd_tf2":
+        mcd_parser = parser.add_argument_group("monte carlo dropout")
+        mcd_parser.add_argument("--mcd-dropout", type=float, default=0.05)
+        mcd_parser.add_argument("--mcd-n-dropout-samples", type=int, default=100)
+        mcd_parser.add_argument("--mcd-lengthscale", type=float, default=1e-2)
+        mcd_parser.add_argument("--mcd-tau", type=float, default=1.0)
+
+    nnacq_parser = parser.add_argument_group("lcb acquisition")
+    nnacq_parser.add_argument(
+        "--acq-optim-cls",
+        type=ClassType(tf.keras.optimizers.Optimizer),
+        metavar="optimizer",
+        default=tf.keras.optimizers.Adam,
+    )
+    nnacq_parser.add_argument(
+        "--acq-optim-params",
+        type=KeyValuePairsType(),
+        metavar="key=value,[...]",
+        default=dict(learning_rate=0.05),
     )
     nnacq_parser.add_argument("--acq-optim-iters", type=int, default=5000)
     nnacq_parser.add_argument("--acq-optim-lr-decay-step-size", type=int, default=1000)

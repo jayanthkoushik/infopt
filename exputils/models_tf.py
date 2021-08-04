@@ -5,11 +5,12 @@ from typing import List
 
 from infopt.ihvp_tf import LowRankIHVPTF
 from infopt.nnmodel_tf import NNModelTF
+from infopt.nnmodel_mcd_tf import NNModelMCDTF
 from infopt.nnacq_tf import NNAcqTF
 
 
-# TODO(yj): device control for TF2
-DEVICE = "cpu"
+# TODO(yj): remove unused variable
+DEVICE = "cuda"
 
 
 def make_fcnet(
@@ -30,9 +31,11 @@ def make_fcnet(
     return model
 
 
-def model_nn_inf(base_model, space, args, acq_fast_project=None):
-    """Neural network model with influence acquisition."""
-    # Returns (model, acq).
+def model_nn_inf_tf2(base_model, space, args, acq_fast_project=None):
+    """Neural network model with influence acquisition using TF2.
+
+    Returns (model, acq).
+    """
     ihvp = LowRankIHVPTF(
         base_model.trainable_variables,
         args.ihvp_rank,
@@ -56,11 +59,54 @@ def model_nn_inf(base_model, space, args, acq_fast_project=None):
         args.bom_up_iters_per_point,
         args.bom_n_higs,
         args.bom_ihvp_n,
+        args.bom_weight_decay,
         args.bom_ckpt_every,
         DEVICE,
         args.tb_writer,
     )
-    from GPyOpt.methods import BayesianOptimization
+
+    acq = NNAcqTF(
+        bo_model,
+        space,
+        0,  # set in optimization.py#L88
+        args.acq_optim_cls,
+        args.acq_optim_params,
+        args.acq_optim_iters,
+        args.acq_ckpt_every,
+        acq_fast_project,
+        args.acq_rel_tol,
+        DEVICE,
+        args.tb_writer,
+        args.acq_reinit_optim_start,
+        args.acq_optim_lr_decay_step_size,
+        args.acq_optim_lr_decay_gamma,
+    )
+
+    return bo_model, acq
+
+
+def model_nn_mcd_tf2(base_model, space, args, acq_fast_project=None):
+    """Neural network model with MC Dropout uncertainty-based acquisition
+    using TF2.
+
+    Returns (model, acq).
+    """
+    bo_model_optim = args.bom_optim_cls(**args.bom_optim_params)
+    bo_model = NNModelMCDTF(
+        base_model,
+        bo_model_optim,
+        args.bom_loss_cls(reduction=tf.keras.losses.Reduction.NONE),
+        args.bom_up_batch_size,
+        args.bom_up_iters_per_point,
+        args.mcd_dropout,
+        args.mcd_n_dropout_samples,
+        args.mcd_lengthscale,
+        args.mcd_tau,
+        args.bom_ckpt_every,
+        DEVICE,
+        args.tb_writer,
+    )
+
     acq = NNAcqTF(
         bo_model,
         space,

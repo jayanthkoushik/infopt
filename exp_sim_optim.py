@@ -41,11 +41,13 @@ from torch.nn.modules.loss import _Loss, MSELoss
 from torch.optim import Adam, Optimizer
 
 from exputils.models import DEVICE, FCNet, model_gp, model_nn_inf, model_nr, NRNet
+from exputils.models_tf import make_fcnet, model_nn_inf_tf2, model_nn_mcd_tf2
 from exputils.optimization import optimize_nn_offline, run_optim
 from exputils.parsing import (
     base_arg_parser,
     make_gp_parser,
     make_nn_nr_parser,
+    make_nn_tf2_parser,
     make_optim_parser,
     make_plot_parser,
     TensorboardWriterType,
@@ -83,7 +85,7 @@ def main():
     gp_parser = run_sub_parsers.add_parser("gp", formatter_class=LazyHelpFormatter)
     make_gp_parser(gp_parser)
 
-    for _mname in ["nn", "nr"]:
+    for _mname in ["nn", "nr", "nn_tf2", "nnmcd_tf2"]:
         mname_parser = run_sub_parsers.add_parser(
             _mname, formatter_class=LazyHelpFormatter
         )
@@ -94,7 +96,10 @@ def main():
             metavar="int,int[,...]",
         )
         mname_parser.add_argument("--dropout", type=float, default=0.0)
-        make_nn_nr_parser(mname_parser, _mname)
+        if _mname.endswith("_tf2"):
+            make_nn_tf2_parser(mname_parser, _mname)
+        else:
+            make_nn_nr_parser(mname_parser, _mname)
 
     run_offnn_parser = sub_parsers.add_parser(
         "run-offline-nn", formatter_class=LazyHelpFormatter
@@ -176,6 +181,9 @@ def main():
 
 
 def run(args):
+    if args.mname.endswith("_tf2"):
+        import tensorflow as tf
+
     funf = FS[args.fname]
     try:
         fun = funf(args.fdim)
@@ -260,7 +268,10 @@ def run(args):
         b0 = fun.bounds[0]
         if all((b[0] == b0[0] and b[1] == b0[1]) for b in fun.bounds[1:]):
             logging.info(f"using fast project with bounds {b0}")
-            acq_fast_project = lambda x: x.clamp_(*b0)
+            if args.mname.endswith("_tf2"):
+                acq_fast_project = lambda x: tf.clip_by_value(x, *b0)
+            else:
+                acq_fast_project = lambda x: x.clamp_(*b0)
         else:
             logging.info("using default projection")
             acq_fast_project = None
@@ -277,11 +288,17 @@ def run(args):
                 has_bias=args.nr_has_bias,
             ).to(DEVICE)
             model, acq = model_nr(base_model, space, args, acq_fast_project)
+        elif args.mname == "nn_tf2":
+            base_model = make_fcnet(args.fdim, args.layer_sizes, dropout=args.dropout)
+            model, acq = model_nn_inf_tf2(base_model, space, args, acq_fast_project)
+        elif args.mname == "nnmcd_tf2":
+            base_model = make_fcnet(args.fdim, args.layer_sizes, dropout=args.mcd_dropout)
+            model, acq = model_nn_mcd_tf2(base_model, space, args, acq_fast_project)
         else:
             base_model = FCNet(args.fdim, args.layer_sizes, dropout=args.dropout).to(DEVICE)
             model, acq = model_nn_inf(base_model, space, args, acq_fast_project)
 
-        logging.debug(base_model)
+        logging.debug(base_model.summary() if args.mname.endswith("_tf2") else base_model)
         normalize_Y = False
 
     mu_mins, sig_mins, acq_mins, y_mins, mse, test_mse = [], [], [], [], [], []

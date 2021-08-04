@@ -95,7 +95,9 @@ class NNModelMCDTF(BOModel):
             if (self.tb_writer is not None and
                     self.total_iter % self.ckpt_every == 0):
                 self.tb_writer.add_scalar(
-                    "nn_model/log_loss", np.log10(loss.item()), self.total_iter
+                    "nn_model/log_loss",
+                    np.log10(loss.numpy().item()),
+                    self.total_iter,
                 )
 
             if i >= iters - 1:
