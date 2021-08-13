@@ -19,28 +19,38 @@ def load_save_data(res_dir, skip_pats):
         if any(re.match(pat, res_file) for pat in skip_pats):
             logging.info(f"skipping {res_file}")
             continue
-        with open(res_file, "rb") as f:
-            res = pickle.load(f)
+        try:
+            with open(res_file, "rb") as f:
+                res = pickle.load(f)
+        except EOFError:
+            logging.info(f"EOFError in {res_file}, skipping")
 
         mname = res["args"]["mname"].upper()
-        if mname == "NN":
+        suffix = ["tf2"] if mname.endswith("_TF2") else []
+        if mname in ["NN", "NNINF", "NN_TF2"]:
+            mname = "NN"
             # handle greedy case (exploration weight == 0)
             if (res["args"]["use_const_exp_w"] == 0.0 or
                     res["args"]["exp_multiplier"] == 0.0):
                 acq_type = "Greedy"
             else:
                 acq_type = "INF"
-            # sub-categorize by acquisition types
+            # specify acquisition optimizer if not Adam
             acq_optim_name = res["args"]["acq_optim_cls"].__name__
-            acq_type += (
-                f" ({acq_optim_name})" if acq_optim_name != "Adam" else ""
-            )
-            # TODO: remove
-            if "obj_layer_sizes" in res["args"]:
-                if res["args"]["model_layer_sizes"] == res["args"]["obj_layer_sizes"]:
-                    acq_type += " (Same)"
-                else:
-                    acq_type += " (Small)"
+            if acq_optim_name != "Adam":
+                suffix.append(acq_optim_name)
+            # specify weight decay if not zero
+            if "weight_decay" in res["args"]["bom_optim_params"]:
+                wd = res["args"]["bom_optim_params"]["weight_decay"]
+                suffix.append(f"wd{wd}")
+            elif "bom_weight_decay" in res["args"]:  # TF2
+                wd = res["args"]["bom_weight_decay"]
+                suffix.append(f"wd{wd}")
+        elif mname in ["NNMCD", "NNMCD_TF2"]:
+            mname = "NN"
+            acq_type = "MCD"
+            dropout = res["args"]["mcd_dropout"]
+            suffix.append(f"drop{dropout}")
         elif mname == "NR":
             if res["args"]["use_nrif"]:
                 acq_type = "INF"
@@ -55,6 +65,8 @@ def load_save_data(res_dir, skip_pats):
         else:
             raise ValueError(f"unknown model type: {mname}")
         mname = f"{mname} {acq_type}".strip()
+        suffix = ",".join(suffix)
+        mname += f" ({suffix})" if suffix else ""
 
         init_points = res["args"]["init_points"]
         iters = res["args"]["optim_iters"]
