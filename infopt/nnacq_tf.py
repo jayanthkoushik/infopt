@@ -4,6 +4,7 @@ for TensorFlow neural network models.
 WARNING:tensorflow:11 out of the last 11 calls to <function pfor.<locals>.f at 0x173aded40> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has experimental_relax_shapes=True option that relaxes argument shapes that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
 """
 
+import numpy as np
 import tensorflow as tf
 
 from GPyOpt.acquisitions import AcquisitionLCB
@@ -129,3 +130,108 @@ class NNAcqTF(AcquisitionLCB):
         if self.tb_writer is not None:
             self.tb_writer.add_scalar("nn_model/acq", fx, self.acq_calls)
         return self.x.numpy(), fx
+
+
+class NNAcqCategoricalTF(AcquisitionLCB):
+    """The LCB (or greedy, if exploration_weight == 0) optimizer defined
+    on a categorical space.
+
+    Resorts to an argmin over the input space, with sampling.
+    """
+
+    # no gradient-based optimization
+    # (any _withGradients methods shouldn't be called)
+    analytical_gradient_prediction = False
+
+    def __init__(
+            self,
+            model,
+            space,
+            exploration_weight=2,
+            n_candidates=np.inf,
+            batch_size=None,  # TF default: 32
+            tb_writer=None,
+            reinit_optim_start=False,
+            x_sampler=None,
+            feature_map=None,
+    ):
+        super().__init__(model, space, exploration_weight=exploration_weight)
+
+        self._check_space()
+        self.domain = self.space.space_expanded[0].domain
+        self.n_inputs = len(self.domain)
+
+        self.n_candidates = min(n_candidates, self.n_inputs)
+        self.batch_size = batch_size
+        self.tb_writer = tb_writer
+        self.reinit_optim_start = reinit_optim_start
+        self.x_sampler = x_sampler
+        self.feature_map = feature_map
+
+        self.candidates = None
+        self._init_candidates()
+
+        self.optimizer = self
+        self.acq_calls = 0
+
+    def _check_space(self):
+        """Check if input space contains exactly one categorical variable."""
+        assert len(self.space.space_expanded) == 1, (
+            "input space must contain exactly one variable for " +
+            self.__class__.__name__
+        )
+        assert self.space.space_expanded[0].type == "categorical", (
+            "input variable must be categorical for " + self.__class__.__name__
+        )
+
+    def _init_candidates(self):
+        """Samples/Retrieves all inputs to be considered for the argmin."""
+        if self.x_sampler is None:
+            if self.n_candidates < self.n_inputs:
+                x = np.random.choice(self.domain,
+                                     self.n_candidates,
+                                     replace=False)[:, np.newaxis]
+            else:
+                x = np.arange(self.n_inputs)[:, np.newaxis]
+        else:
+            # x_sampler must be callable with n_candidates as an argument
+            x = self.x_sampler(self.n_candidates)
+
+        # use one-hot representation
+        self.candidates = np.zeros((self.n_candidates, self.n_inputs))
+        np.put_along_axis(self.candidates, x, 1, axis=1)
+
+        if self.feature_map is None:
+            x_data = tf.convert_to_tensor(self.candidates, dtype=tf.float32)
+        else:
+            x_data, _ = self.feature_map(self.candidates, None)
+        self.candidates_features = x_data
+
+    @staticmethod
+    def fromDict(model, space, optimizer, cost_withGradients, config):
+        raise NotImplementedError()
+
+    def optimize(self, duplicate_manager=None):
+        # pylint: disable=protected-access, unused-argument
+        """Override default optimizer to a gradient descent optimizer on x."""
+        if self.reinit_optim_start:
+            self._init_candidates()
+
+        # loops over each x; slow
+        if self.exploration_weight > 0:
+            m, s = self.model.predict(self.candidates)
+            assert m.shape[1] == s.shape[1] == 1
+
+            lcbs = m - self.exploration_weight * s
+        # greedy w/ batched prediction (tf.keras.Model)
+        else:
+            m = self.model.net.predict(self.candidates_features,
+                                       self.batch_size)
+            lcbs = m
+        x, fx = np.array([[lcbs.argmin()]]), lcbs.min()
+
+        self.acq_calls += 1
+        if self.tb_writer is not None:
+            self.tb_writer.add_scalar("nn_model/acq", fx, self.acq_calls)
+
+        return x, fx

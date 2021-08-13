@@ -57,12 +57,18 @@ class NNModelMCDTF(BOModel):
         self.device = device
         self.tb_writer = tb_writer
 
+        # idx -> features for categorical selection
+        self.feature_map = kwargs.get("feature_map", None)
+
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """Train the NN using (X_all, Y_all) and get new IHVP estimates."""
         # Note: X_new and Y_new are ignored
         # pylint: disable=unused-argument
-        X = tf.convert_to_tensor(X_all, dtype=tf.float32)
-        Y = tf.convert_to_tensor(Y_all, dtype=tf.float32)
+        if self.feature_map is not None:
+            X, Y = self.feature_map(X_all, Y_all)
+        else:
+            X = tf.convert_to_tensor(X_all, dtype=tf.float32)
+            Y = tf.convert_to_tensor(Y_all, dtype=tf.float32)
         data = tf.data.Dataset.from_tensor_slices((X, Y))
         n_new = len(data) - self.n
         self.n = len(data)
@@ -105,7 +111,7 @@ class NNModelMCDTF(BOModel):
 
     def _predict_single(self, x, comp_grads=True):
         """A helper for predict() and predict_withGradients() per example."""
-        data = tf.data.Dataset.from_tensor_slices([x])
+        data = tf.data.Dataset.from_tensor_slices(x)
         T = self.n_dropout_samples
         batch_size = min(T, self.update_batch_size)
 
@@ -113,7 +119,8 @@ class NNModelMCDTF(BOModel):
         # Batchify forwards over T dropout samples
         for batch in data.repeat(T).batch(batch_size):
             with tf.GradientTape() as tape:
-                tape.watch(batch)
+                if comp_grads:
+                    tape.watch(batch)
                 yt_hat = self.net(batch, training=True)  # dropout!
             preds.append(yt_hat)
             if comp_grads:
@@ -147,8 +154,11 @@ class NNModelMCDTF(BOModel):
         T is the number of dropout samples obtained per input.
         """
         M, S = [], []
-        X = tf.convert_to_tensor(X, dtype=tf.float32)
-        for i in range(len(X)):
+        if self.feature_map is not None:
+            X, _ = self.feature_map(X, None)
+        else:
+            X = tf.convert_to_tensor(X, dtype=tf.float32)
+        for i in range(X.shape[0]):
             x = X[i: i + 1]
             m, s, _, _ = self._predict_single(x, comp_grads=False)
             M.append(m)
@@ -178,8 +188,11 @@ class NNModelMCDTF(BOModel):
     def predict_withGradients(self, X):
         """Get the gradients of the predicted mean and variance at X."""
         M, S, dM, dS = [], [], [], []
-        X = tf.convert_to_tensor(X, dtype=tf.float32)
-        for i in range(len(X)):
+        if self.feature_map is not None:
+            X, _ = self.feature_map(X, None)
+        else:
+            X = tf.convert_to_tensor(X, dtype=tf.float32)
+        for i in range(X.shape[0]):
             x = X[i : i + 1]
             m, s, dm, ds = self._predict_single(x, comp_grads=True)
             M.append(m)

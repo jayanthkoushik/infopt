@@ -227,7 +227,7 @@ class RandomNN(BaseObjective, nn.Module):
 class BPNNBandit(BaseObjective):
     """Find the molecular structure with the lowest calculated energy.
 
-    This is cast as an armed bandit problem over a *discrete* space:
+    This is cast as an armed bandit problem over a *categorical* space:
     each unexplored point corresponds to an arm.
     Note that the "true" inputs are a set of g-function atomic features, and
     the input size differs for different molecules.
@@ -243,8 +243,9 @@ class BPNNBandit(BaseObjective):
     ):
         super().__init__(input_dim)
 
-        self.X, self.Y = self.preprocess_or_load(json_path, gvecs_npy_path)
-        self.n = len(self.X)
+        self.X_obj, self.Y = self.preprocess_or_load(json_path, gvecs_npy_path)
+        self.n = len(self.Y)
+        self.X = np.expand_dims(np.arange(self.n), 1)  # [[0], [1], ..., [n]]
 
         self.n_pretrain = self.n - n_search - n_test
         self.n_search = n_search
@@ -252,6 +253,15 @@ class BPNNBandit(BaseObjective):
         self.rng = (rng if isinstance(rng, np.random.Generator)
                     else np.random.default_rng(rng))
         self._split_data()
+
+        # treat search options as categorical variables (no gradient descent)
+        # note that the actual values are indices to X_search and Y_search
+        self.domain = [{"name": "molecules",
+                        "type": "categorical",
+                        "domain": tuple(i for i in range(self.n_search))}]
+
+        self.min = self.X_search[self.Y_search.argmin()]
+        self.fmin = self.Y_search.min()
 
     @staticmethod
     def preprocess_or_load(json_path, gvecs_npy_path):
@@ -261,8 +271,8 @@ class BPNNBandit(BaseObjective):
             data = np.load(gvecs_npy_path, allow_pickle=True)
         else:
             data = BPNNBandit.make_gfunction_data(json_path, gvecs_npy_path)
-        X = data[:, :-1]
-        Y = data[:, -1]
+        X = data[:, :-1]  # each entry is either a list or a string 'O'
+        Y = data[:, -1:].astype(float)
         return X, Y
 
     @staticmethod
@@ -362,33 +372,44 @@ class BPNNBandit(BaseObjective):
         return gvecs_for_cells
 
     def _split_data(self):
-        """Randomly split data into pretrain, search, and test portions."""
-        self.indices = self.rng.permutation(self.n)
-        self.X_pretrain, self.Y_pretrain = [
-            arr[self.indices[:self.n_pretrain]] for arr in [self.X, self.Y]
-        ]
-        self.X_search, self.Y_search = [
-            arr[self.indices[:self.n_search]] for arr in [self.X, self.Y]
-        ]
-        self.X_test, self.Y_test = [
-            arr[self.indices[:self.n_test]] for arr in [self.X, self.Y]
-        ]
+        """Randomly split data into pretrain, search, and test portions.
 
-    def find_index(self, x):
-        """Find the index corresponding to the input x.
-
-        TODO: what if x is outside the domain?
+        Note that the first n_search elements of X and Y (after shuffling)
+        correspond to the search candidates.
         """
-        index, = np.where(np.all(self.X == x, axis=1))
-        if not index:
-            raise ValueError(f"input {x} not found within domain")
-        return index
+        self.indices = self.rng.permutation(self.n)
+        self.X, self.Y = self.X[self.indices], self.Y[self.indices]
+
+        split0, split1 = self.n_search, self.n_search + self.n_test
+        self.X_search, self.Y_search = self.X[:split0], self.Y[:split0]
+        self.X_test, self.Y_test = self.X[split0:split1], self.Y[split0:split1]
+        self.X_pretrain, self.Y_pretrain = self.X[split1:], self.Y[split1:]
+
+    def get_domain(self):
+        """Get the domain set for the problem."""
+        return self.domain
+
+    def get_features(self, x):
+        """Get atomic features given search indices."""
+        return self.X_obj[np.take(self.X_search,
+                                  np.array(x, np.int64)).flatten()]
 
     def f(self, x):
-        return self.Y[self.find_index(x)]
+        """Compute the output value given search indices."""
+        return np.take(self.Y_search, np.array(x, np.int64))
 
     def f_noiseless(self, x):
         return self.f(x)
+
+    def get_data(self, split="pretrain"):
+        """Get input and output arrays for model training/evaluation."""
+        X, Y = {
+            "pretrain": (self.X_pretrain, self.Y_pretrain),
+            "search": (self.X_search, self.Y_search),
+            "test": (self.X_test, self.Y_test),
+        }[split]
+        X = self.X_obj[X.squeeze()]
+        return X, Y
 
 
 class WeatherBandit(BaseObjective):

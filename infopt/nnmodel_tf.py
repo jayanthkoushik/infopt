@@ -57,12 +57,18 @@ class NNModelTF(BOModel):
         self.tb_writer = tb_writer
         self.dsdx = None
 
+        # idx -> features for categorical selection
+        self.feature_map = kwargs.get("feature_map", None)
+
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """Train the NN using (X_all, Y_all) and get new IHVP estimates."""
         # Note: X_new and Y_new are ignored
         # pylint: disable=unused-argument
-        X = tf.convert_to_tensor(X_all, dtype=tf.float32)
-        Y = tf.convert_to_tensor(Y_all, dtype=tf.float32)
+        if self.feature_map is not None:
+            X, Y = self.feature_map(X_all, Y_all)
+        else:
+            X = tf.convert_to_tensor(X_all, dtype=tf.float32)
+            Y = tf.convert_to_tensor(Y_all, dtype=tf.float32)
         data = tf.data.Dataset.from_tensor_slices((X, Y))
         n_new = len(data) - self.n
         self.n = len(data)
@@ -147,16 +153,20 @@ class NNModelTF(BOModel):
     def _predict_single(self, x, comp_grads=True):
         """A helper for predict() and predict_withGradients() per example."""
 
-        x = tf.Variable(x)
-        v = tf.constant(0.0, dtype=tf.float32)  # variance = sum(influence^2)
+        if comp_grads:
+            x = tf.Variable(x)
+        # variance = sum(influence^2)
         with tf.GradientTape(persistent=True) as outer_tape:
             with tf.GradientTape() as inner_tape:
                 m = self.net(x, training=False)
-            grads = inner_tape.gradient(m, self.net.trainable_variables + [x])
-            dmdp, dmdx = grads[:-1], grads[-1]
             if comp_grads:
+                grads = inner_tape.gradient(m,
+                                            self.net.trainable_variables + [x])
+                dmdp, dmdx = grads[:-1], grads[-1]
                 self.dmdx = dmdx
                 self.dsdx = tf.zeros_like(x, dtype=tf.float32)
+            else:
+                dmdp = inner_tape.gradient(m, self.net.trainable_variables)
 
             # Calculate s and dsdx
             # hig: H^{-1}grad(L(z))
@@ -189,8 +199,11 @@ class NNModelTF(BOModel):
     def predict(self, X):
         """Get the predicted mean and std at X."""
         M, S = [], []
-        X = tf.convert_to_tensor(X, dtype=tf.float32)
-        for i in range(len(X)):
+        if self.feature_map is not None:
+            X, _ = self.feature_map(X, None)
+        else:
+            X = tf.convert_to_tensor(X, dtype=tf.float32)
+        for i in range(X.shape[0]):
             x = X[i : i + 1]
             m, s, _, _ = self._predict_single(x, comp_grads=False)
             M.append(m)
@@ -202,8 +215,11 @@ class NNModelTF(BOModel):
     def predict_withGradients(self, X):
         """Get the gradients of the predicted mean and variance at X."""
         M, S, dM, dS = [], [], [], []
-        X = tf.convert_to_tensor(X, dtype=tf.float32)
-        for i in range(len(X)):
+        if self.feature_map is not None:
+            X, _ = self.feature_map(X, None)
+        else:
+            X = tf.convert_to_tensor(X, dtype=tf.float32)
+        for i in range(X.shape[0]):
             x = X[i : i + 1]
             m, s, dm, ds = self._predict_single(x, comp_grads=True)
             M.append(m)
