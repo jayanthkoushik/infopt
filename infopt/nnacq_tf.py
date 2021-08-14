@@ -221,17 +221,26 @@ class NNAcqCategoricalTF(AcquisitionLCB):
         if self.exploration_weight > 0:
             m, s = self.model.predict(self.candidates)
             assert m.shape[1] == s.shape[1] == 1
-
-            lcbs = m - self.exploration_weight * s
         # greedy w/ batched prediction (tf.keras.Model)
         else:
             m = self.model.net.predict(self.candidates_features,
                                        self.batch_size)
-            lcbs = m
-        x, fx = np.array([[lcbs.argmin()]]), lcbs.min()
+            s = 0
+        lcbs = m - self.exploration_weight * s  # N x 1
+
+        fx = lcbs.min()
+        min_idx = lcbs.argmin(axis=0)
+        x = self.candidates[min_idx]
 
         self.acq_calls += 1
         if self.tb_writer is not None:
             self.tb_writer.add_scalar("nn_model/acq", fx, self.acq_calls)
+            self.tb_writer.add_scalar("nn_model/exp_w",
+                                      self.exploration_weight, self.acq_calls)
+            mu_min = m[min_idx].item()
+            sig_min = s[min_idx].item() if self.exploration_weight > 0 else 0
+            self.tb_writer.add_scalar("nn_model/mu", mu_min, self.acq_calls)
+            self.tb_writer.add_scalar("nn_model/sigma", sig_min, self.acq_calls)
 
+        # must return the one-hot vector as the minimizer
         return x, fx

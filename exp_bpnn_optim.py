@@ -3,11 +3,14 @@
 Uses the Behler-Parrinello Neural Network (BPNN).
 
 Usage:
-    python exp_bpnn_optim.py run \
-    --save-file results/bpnn/test --tb-dir logdir/bpnn/test \
-    --optim-iters 100 --model-update-interval 1 \
-    nninf --layer-sizes 64,32 --dropout 0.1 --activation tanh \
-    --pretrain-epochs 50
+    python exp_bpnn_optim.py run --seed $i \
+        --save-file "results/bpnn_ZrO2/nngreedy_$i.pkl" --tb-dir "logdir/bpnn_ZrO2/nngreedy_$i" \
+        --n-search 1200 --n-test 500 --exp-multiplier 0.0 \
+        --init-points 200 --optim-iters 200 --model-update-interval 8 \
+        nninf --layer-sizes 64,64 --activation relu \
+        --bom-optim-params "learning_rate=0.005" --bom-weight-decay 1e-4 \
+        --bom-up-iters-per-point 50 --bom-up-upsample-new 0.25 \
+        --pretrain-epochs 50
 
     python exp_bpnn_optim.py plot-regrets --res-dir results/bpnn_synthetic \
     --save-file results/bpnn_synthetic/regrets.pdf
@@ -18,20 +21,15 @@ Usage:
 import logging
 import os
 import pickle
-from typing import Union
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
     CommaSeparatedInts,
-    KeyValuePairsType,
     LazyHelpFormatter,
-    OutputDirectoryType,
 )
 from shinyutils.matwrap import MatWrap as mw
 
-import GPyOpt
 from GPyOpt import Design_space
-from GPyOpt.experiment_design import RandomDesign
 
 import numpy as np
 import tensorflow as tf
@@ -159,9 +157,21 @@ def run(args):
     else:
         raise ValueError(f"unrecognized model name {args.mname}")
 
-    # def eval_hook(n, bo, postfix_dict):
-    #     return
-    eval_hook = None
+    mu_mins, sig_mins, acq_mins, exp_w = [], [], [], []
+
+    def eval_hook(n, bo, postfix_dict):
+        nonlocal mu_mins, sig_mins, acq_mins, exp_w
+        mu_min, sig_min = bo.model.predict(bo.X[-1:])
+        _exp_w = bo.acquisition.exploration_weight
+        acq_min = -mu_min + _exp_w * sig_min
+        mu_mins.append(mu_min.item())
+        sig_mins.append(sig_min.item())
+        acq_mins.append(acq_min.item())
+        exp_w.append(_exp_w)
+        postfix_dict["μ*"] = mu_mins[-1]
+        postfix_dict["σ*"] = sig_mins[-1]
+        postfix_dict["α*"] = acq_mins[-1]
+
     result = run_optim(problem, space, model, acq, False, args, eval_hook)
 
     save_file = args.save_file
@@ -173,6 +183,12 @@ def run(args):
     del result["bo"]
     result["fmin"] = problem.fmin
     result["args"] = vars(args)
+    result.update({
+        "mu_mins": mu_mins,
+        "sig_mins": sig_mins,
+        "acq_mins": acq_mins,
+        "exp_w": exp_w,
+    })
     pickle.dump(result, save_file.buffer)
     save_file.close()
 

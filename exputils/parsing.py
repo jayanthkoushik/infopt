@@ -165,6 +165,7 @@ def make_nn_tf2_parser(parser, mname):
     )
     nn_boparser.add_argument("--bom-up-batch-size", type=int, default=16)
     nn_boparser.add_argument("--bom-up-iters-per-point", type=int, default=50)
+    nn_boparser.add_argument("--bom-up-upsample-new", type=float, default=None)
     nn_boparser.add_argument("--bom-n-higs", type=int, default=8)
     nn_boparser.add_argument("--bom-ihvp-n", type=int, default=15)
     nn_boparser.add_argument("--bom-ckpt-every", type=int, default=25)

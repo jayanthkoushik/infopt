@@ -26,6 +26,7 @@ class NNModelTF(BOModel):
             reduction=tf.keras.losses.Reduction.NONE),
         update_batch_size=np.inf,
         update_iters_per_point=25,
+        update_upsample_new=None,
         num_higs=np.inf,
         ihvp_n=np.inf,
         weight_decay=1e-5,
@@ -48,6 +49,7 @@ class NNModelTF(BOModel):
         self.optim = optim
         self.update_batch_size = update_batch_size
         self.update_iters_per_point = update_iters_per_point
+        self.update_upsample_new = update_upsample_new
         self.num_higs = num_higs
         self.ihvp_n = ihvp_n
         self.weight_decay = weight_decay
@@ -62,22 +64,36 @@ class NNModelTF(BOModel):
 
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """Train the NN using (X_all, Y_all) and get new IHVP estimates."""
-        # Note: X_new and Y_new are ignored
+        # Note: X_new and Y_new are ignored (inputs: None, None)
         # pylint: disable=unused-argument
         if self.feature_map is not None:
             X, Y = self.feature_map(X_all, Y_all)
         else:
             X = tf.convert_to_tensor(X_all, dtype=tf.float32)
             Y = tf.convert_to_tensor(Y_all, dtype=tf.float32)
-        data = tf.data.Dataset.from_tensor_slices((X, Y))
-        n_new = len(data) - self.n
-        self.n = len(data)
+
+        # ratio of new samples in the training data
+        if self.update_upsample_new is not None and self.update_upsample_new > 0.0:
+            old_data = tf.data.Dataset.from_tensor_slices((X[:self.n], Y[:self.n]))
+            n_new = X.shape[0] - self.n
+            new_data = tf.data.Dataset.from_tensor_slices((X[self.n:], Y[self.n:]))
+            self.n = len(old_data) + len(new_data)
+
+            p = self.update_upsample_new
+            new_to_old = min(p / (1 - p + 1e-8), 100)
+            repeat_new = int(np.round(max(1, new_to_old * self.n / n_new)))
+            data = new_data.repeat(repeat_new).concatenate(old_data)
+        else:
+            data = tf.data.Dataset.from_tensor_slices((X, Y))
+            n_new = len(data) - self.n
+            self.n = len(data)
 
         # Part 1: Train NN using current data points
         iters = self.update_iters_per_point * n_new
         batch_size = min(self.n, self.update_batch_size)
 
         # Change from torch: shuffle all data once before iterating through all
+        old_loss = 1e-8
         shuffled_batches = data.shuffle(128).repeat().batch(batch_size)
         for i, (batch_X, batch_Y) in shuffled_batches.enumerate():
             # Standard TF2 train step
@@ -96,17 +112,22 @@ class NNModelTF(BOModel):
             self.optim.apply_gradients(zip(gradients,
                                            self.net.trainable_variables))
 
+            loss = loss.numpy().item()
             self.total_iter += 1
             if (self.tb_writer is not None and
                     self.total_iter % self.ckpt_every == 0):
                 self.tb_writer.add_scalar(
-                    "nn_model/log_loss",
-                    np.log10(loss.numpy().item()),
-                    self.total_iter,
+                    "nn_model/log_loss", np.log10(loss), self.total_iter,
                 )
 
-            if i >= iters - 1:
+            if abs(loss - old_loss) < abs(old_loss) * 1e-3:
+                print(f"loss converged after {i} updates, ending model updates")
                 break
+            elif i >= iters - 1:
+                print(f"reached {iters} iterations")
+                break
+            else:
+                old_loss = loss
 
         # Part 2: Update IHVP calculators (IterativeIHVP or LowRankIHVP)
         ihvp_n = min(self.n, self.ihvp_n)
@@ -155,7 +176,7 @@ class NNModelTF(BOModel):
 
         if comp_grads:
             x = tf.Variable(x)
-        # variance = sum(influence^2)
+        # variance = mean(influence^2)
         with tf.GradientTape(persistent=True) as outer_tape:
             with tf.GradientTape() as inner_tape:
                 m = self.net(x, training=False)

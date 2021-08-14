@@ -227,6 +227,8 @@ class RandomNN(BaseObjective, nn.Module):
 class BPNNBandit(BaseObjective):
     """Find the molecular structure with the lowest calculated energy.
 
+    Default data is the 2k ZrO2 dataset.
+
     This is cast as an armed bandit problem over a *categorical* space:
     each unexplored point corresponds to an arm.
     Note that the "true" inputs are a set of g-function atomic features, and
@@ -246,6 +248,7 @@ class BPNNBandit(BaseObjective):
         self.X_obj, self.Y = self.preprocess_or_load(json_path, gvecs_npy_path)
         self.n = len(self.Y)
         self.X = np.expand_dims(np.arange(self.n), 1)  # [[0], [1], ..., [n]]
+        self.Y = self.Y / 1000  # kilo
 
         self.n_pretrain = self.n - n_search - n_test
         self.n_search = n_search

@@ -25,6 +25,7 @@ class NNModelMCDTF(BOModel):
             reduction=tf.keras.losses.Reduction.NONE),
         update_batch_size=np.inf,
         update_iters_per_point=25,
+        update_upsample_new=None,
         dropout=0.05,  # defined in net?
         n_dropout_samples=100,
         lengthscale=1e-2,
@@ -52,6 +53,7 @@ class NNModelMCDTF(BOModel):
         self.n = 0
         self.update_batch_size = update_batch_size
         self.update_iters_per_point = update_iters_per_point
+        self.update_upsample_new = update_upsample_new
         self.ckpt_every = ckpt_every
         self.total_iter = 0
         self.device = device
@@ -69,9 +71,22 @@ class NNModelMCDTF(BOModel):
         else:
             X = tf.convert_to_tensor(X_all, dtype=tf.float32)
             Y = tf.convert_to_tensor(Y_all, dtype=tf.float32)
-        data = tf.data.Dataset.from_tensor_slices((X, Y))
-        n_new = len(data) - self.n
-        self.n = len(data)
+
+        # ratio of new samples in the training data
+        if self.update_upsample_new is not None and self.update_upsample_new > 0.0:
+            old_data = tf.data.Dataset.from_tensor_slices((X[:self.n], Y[:self.n]))
+            n_new = X.shape[0] - self.n
+            new_data = tf.data.Dataset.from_tensor_slices((X[self.n:], Y[self.n:]))
+            self.n = len(old_data) + len(new_data)
+
+            p = self.update_upsample_new
+            new_to_old = min(p / (1 - p + 1e-8), 100)
+            repeat_new = int(np.round(max(1, new_to_old * self.n / n_new)))
+            data = new_data.repeat(repeat_new).concatenate(old_data)
+        else:
+            data = tf.data.Dataset.from_tensor_slices((X, Y))
+            n_new = len(data) - self.n
+            self.n = len(data)
 
         # Train NN using current data points
         iters = self.update_iters_per_point * n_new
@@ -82,6 +97,8 @@ class NNModelMCDTF(BOModel):
         # L2 regularizer determined by MC dropout
         reg = (self.lengthscale ** 2 * (1 - self.dropout) /
                (2. * self.n * self.tau))
+
+        old_loss = 1e-8
         for i, (batch_X, batch_Y) in shuffled_batches.enumerate():
             # Standard TF2 train step + L2 regularization
             with tf.GradientTape() as tape:
@@ -97,20 +114,32 @@ class NNModelMCDTF(BOModel):
             self.optim.apply_gradients(zip(gradients,
                                            self.net.trainable_variables))
 
+            loss = loss.numpy().item()
             self.total_iter += 1
             if (self.tb_writer is not None and
                     self.total_iter % self.ckpt_every == 0):
                 self.tb_writer.add_scalar(
-                    "nn_model/log_loss",
-                    np.log10(loss.numpy().item()),
-                    self.total_iter,
+                    "nn_model/log_loss", np.log10(loss), self.total_iter,
                 )
 
-            if i >= iters - 1:
+            if abs(loss - old_loss) < abs(old_loss) * 1e-3:
+                print(f"loss converged after {i} updates, ending model updates")
                 break
+            elif i >= iters - 1:
+                print(f"reached {iters} iterations")
+                break
+            else:
+                old_loss = loss
 
     def _predict_single(self, x, comp_grads=True):
         """A helper for predict() and predict_withGradients() per example."""
+
+        # x is tf.Tensor([1, *input_dims]) or tf.RaggedTensor([1, *input_dims])
+        assert x.shape[0] == 1, (
+            "_predict_single only accepts input tensors with first dimension 1"
+            f", got {x.shape[0]}"
+        )
+
         data = tf.data.Dataset.from_tensor_slices(x)
         T = self.n_dropout_samples
         batch_size = min(T, self.update_batch_size)
@@ -136,11 +165,10 @@ class NNModelMCDTF(BOModel):
 
         # Their gradients
         if comp_grads:
-            grads = tf.concat(grads, axis=0)  # T x 1 x input_dim
-            dmdx = tf.reduce_mean(grads, axis=0)  # input_dim
+            grads = tf.concat(grads, axis=0)  # T x 1 x input_dim -> 1 x input_dim
+            dmdx = tf.reduce_mean(grads, axis=0, keepdims=True)  # 1 x input_dim
             # dsdx = dvdx / s, by chain rule (constants 2 cancelled out)
-            dvdx = tf.reduce_mean((tf.expand_dims(preds, 1) - m) * grads,
-                                  axis=0)  # 1 x input_dim
+            dvdx = tf.reduce_mean((preds - m) * grads, axis=0)  # 1 x input_dim
             dsdx = dvdx / s  # 1 x input_dim
         else:
             dmdx = None
