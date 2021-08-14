@@ -1,6 +1,6 @@
 # mind cluster
 module load anaconda3
-srun -p gpu --cpus-per-task=4 --gres=gpu:1 --mem=40GB --time=24:00:00 --nodelist=mind-1-23 --pty $SHELL
+srun -p gpu --cpus-per-task=4 --gres=gpu:1 --mem=40GB --time=24:00:00 --nodelist=mind-1-13 --pty $SHELL
 module load cuda-11.1.1 cudnn-11.1.1-v8.0.4.30
 export LD_LIBRARY_PATH=/opt/cudnn/cuda-11.1/8.0.4.30/cuda/lib64:/opt/cuda/11.1.1/lib64:/opt/cuda/11.1.1/extras/CUPTI/lib64
 cd infopt
@@ -46,3 +46,34 @@ python exp_sim_optim.py plot-regrets --res-dir results/ackley5d \
 python exp_sim_optim.py plot-timing --res-dir results/ackley5d \
     --save-file results/ackley5d/timing_tf2.pdf \
     --skip-pats "results/ackley5d/nn_lbfgs[0-9]+.pkl"
+
+# -----------------------------------------------------------------------------
+# 2. (Re-run) Ackley 5D with TF2 (NN-INF & NN-MCD)
+#
+# Adjusted MCD hyperparameters: dropout 0.1, tau 0.1
+# -----------------------------------------------------------------------------
+
+for i in $(seq -w 1 20); do
+    # NN-INF (TF2)
+    python exp_sim_optim.py run \
+        --fname ackley --fdim 5 --init-points 1 --optim-iters 500 \
+        --save-file "results/ackley5d/nn_tf2_rerun_$i.pkl" --tb-dir "logdir/ackley5d/nn_tf2_rerun_$i" \
+        nn_tf2 --layer-sizes "16,16,8" --bom-optim-params "learning_rate=0.02" --bom-weight-decay 1e-4
+done
+
+for i in $(seq -w 1 20); do
+    # NN-MCD (TF2)
+    python exp_sim_optim.py run \
+        --fname ackley --fdim 5 --init-points 1 --optim-iters 500 \
+        --save-file "results/ackley5d/nnmcd_tf2_rerun_$i.pkl" --tb-dir "logdir/ackley5d/nnmcd_tf2_rerun_$i" \
+        nnmcd_tf2 --layer-sizes "16,16,8" \
+        --bom-optim-params "learning_rate=0.02" --mcd-dropout 0.1 --mcd-lengthscale 1e-2 --mcd-tau 0.1
+done
+
+for i in $(seq -w 1 20); do
+    # NN-Greedy (TF2)
+    python exp_sim_optim.py run \
+        --fname ackley --fdim 5 --init-points 1 --optim-iters 500 --use-const-exp-w 0.0 \
+        --save-file "results/ackley5d/nngreedy_tf2_rerun_$i.pkl" --tb-dir "logdir/ackley5d/nngreedy_tf2_rerun_$i" \
+        nn_tf2 --layer-sizes "16,16,8" --bom-optim-params "learning_rate=0.02" --bom-weight-decay 1e-4
+done

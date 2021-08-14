@@ -11,29 +11,32 @@ poetry shell
 # -----------------------------------------------------------------------------
 
 for i in $(seq -w 1 20); do
-    # NN-INF
-    python exp_bpnn_optim.py run --seed $i --acq-n-candidates 50 \
-        --optim-iters 200 --model-update-interval 4 --exp-multiplier 1.0 \
-        --save-file "results/bpnn_synthetic/nninf_$i.pkl" \
-        --tb-dir "logdir/bpnn_synthetic/nninf_$i" \
-        nninf --layer-sizes 32,32 --activation tanh \
-        --bom-optim-params "learning_rate=0.01" --dropout 0.1 \
-        --pretrain-epochs 50
     # NN-Greedy
-    python exp_bpnn_optim.py run --seed $i --acq-n-candidates 50 \
-        --optim-iters 200 --model-update-interval 4 --exp-multiplier 0.0 \
-        --save-file "results/bpnn_synthetic/nngreedy_$i.pkl" \
-        --tb-dir "logdir/bpnn_synthetic/nngreedy_$i" \
-        nninf --layer-sizes 32,32 --activation tanh \
-        --bom-optim-params "learning_rate=0.01" --dropout 0.1 \
+    python exp_bpnn_optim.py run --seed $i \
+        --save-file "results/bpnn_ZrO2/nngreedy_$i.pkl" --tb-dir "logdir/bpnn_ZrO2/nngreedy_$i" \
+        --n-search 1200 --n-test 500 --exp-multiplier 0.0 \
+        --init-points 200 --optim-iters 200 --model-update-interval 8 \
+        nninf --layer-sizes 64,64 --activation relu \
+        --bom-optim-params "learning_rate=0.005" --bom-weight-decay 1e-4 \
+        --bom-up-iters-per-point 50 --bom-up-upsample-new 0.25 \
         --pretrain-epochs 50
     # NN-MCD
-    python exp_bpnn_optim.py run --seed $i --acq-n-candidates 50 \
-        --optim-iters 200 --model-update-interval 4 --exp-multiplier 1.0 \
-        --save-file "results/bpnn_synthetic/nnmcd_$i.pkl" \
-        --tb-dir "logdir/bpnn_synthetic/nnmcd_$i" \
-        nnmcd --layer-sizes 32,32 --activation tanh \
-        --bom-optim-params "learning_rate=0.01" \
-        --mcd-dropout 0.25 --mcd-lengthscale 1e-2 --mcd-tau 0.25 \
+    python exp_bpnn_optim.py run --seed $i \
+        --save-file "results/bpnn_ZrO2/nnmcd_$i.pkl" --tb-dir "logdir/bpnn_ZrO2/nnmcd_$i" \
+        --n-search 1200 --n-test 500 \
+        --init-points 200 --optim-iters 200 --model-update-interval 8 \
+        nnmcd --layer-sizes 64,64 --activation relu \
+        --bom-optim-params "learning_rate=0.005" \
+        --bom-up-iters-per-point 50 --bom-up-upsample-new 0.25 \
+        --mcd-dropout 0.1 --mcd-lengthscale 1e-2 --mcd-tau 0.1 \
+        --pretrain-epochs 50
+    # NN-INF
+    python exp_bpnn_optim.py run --seed $i \
+        --save-file "results/bpnn_ZrO2/nninf_$i.pkl" --tb-dir "logdir/bpnn_ZrO2/nninf_$i" \
+        --n-search 1200 --n-test 500 \
+        --init-points 200 --optim-iters 200 --model-update-interval 8 \
+        nninf --layer-sizes 64,64 --activation relu \
+        --bom-optim-params "learning_rate=0.005" --bom-weight-decay 1e-4 \
+        --bom-up-iters-per-point 50 --bom-up-upsample-new 0.25 \
         --pretrain-epochs 50
 done
