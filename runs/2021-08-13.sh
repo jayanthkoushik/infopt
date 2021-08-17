@@ -86,7 +86,6 @@ python exp_bpnn_optim.py plot-acq --res-dir results/bpnn_ZrO2 \
 #python exp_bpnn_optim.py plot-mse_test --res-dir results/bpnn_ZrO2 \
 #    --save-file results/bpnn_ZrO2/mse_test.pdf --skip-pats "results/bpnn_ZrO2/old"
 
-
 # -----------------------------------------------------------------------------
 # 2. BPNN on Synthetic Data, Re-run
 #
@@ -134,3 +133,45 @@ for i in $(seq -w 201 210); do
         --bom-up-batch-size 32 --bom-up-iters-per-point 500 \
         --mcd-dropout 0.25 --mcd-lengthscale 0.1 --mcd-tau 1.0
 done
+
+python exp_bpnn_optim.py plot-regrets --res-dir results/bpnn_ZrO2_v2 \
+    --save-file results/bpnn_ZrO2_v2/regrets.pdf
+python exp_bpnn_optim.py plot-timing --res-dir results/bpnn_ZrO2_v2 \
+    --save-file results/bpnn_ZrO2_v2/timing.pdf
+python exp_bpnn_optim.py plot-sigma --res-dir results/bpnn_ZrO2_v2 \
+    --save-file results/bpnn_ZrO2_v2/sigma.pdf --skip-pats "results/bpnn_ZrO2_v2/nngreedy"
+
+
+python exp_bpnn_optim.py evaluate-retrieval \
+        --res-pats "results/bpnn_ZrO2_v2/nngreedy*.pkl" \
+        --save-file "results/bpnn_ZrO2_v2/nngreedy_retrieval.csv"
+python exp_bpnn_optim.py evaluate-retrieval \
+        --res-pats "results/bpnn_ZrO2_v2/nninf*.pkl" \
+        --save-file "results/bpnn_ZrO2_v2/nninf_retrieval.csv"
+python exp_bpnn_optim.py evaluate-retrieval \
+        --res-pats "results/bpnn_ZrO2_v2/nnmcd*.pkl" \
+        --save-file "results/bpnn_ZrO2_v2/nnmcd_retrieval.csv"
+python exp_bpnn_optim.py evaluate-retrieval \
+        --res-pats "results/bpnn_ZrO2_v2/random*.pkl" \
+        --save-file "results/bpnn_ZrO2_v2/random_retrieval.csv"
+
+# -----------------------------------------------------------------------------
+# 3. BPNN with less pre-training
+#
+# - Make converge at each step
+# - Use a deeper network (32, 32, 16)
+# - 100 initial points, 100 candidates, no upsampling, 4 interval
+# - Increase IHVP samples for larger network
+# - Increase MC dropout and lower lengthscale (uncertainty saturates at 1.00)
+# -----------------------------------------------------------------------------
+
+# NNINF Diagnostic (f*=-)
+python exp_bpnn_optim.py run --seed 198 --diagnostic \
+    --save-file "results/bpnn_ZrO2_v3/nninf_test.pkl" \
+    --tb-dir "logdir/bpnn_ZrO2_v3/nninf_test" \
+    --init-points 100 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 100 \
+    nninf --layer-sizes 32,32,16 --activation gelu \
+    --bom-optim-params "learning_rate=0.002" --bom-weight-decay 1e-5 \
+    --bom-up-batch-size 32 --bom-up-iters-per-point 500
+
+#     --ihvp-rank 32 --ihvp-batch-size 32 --bom-ihvp-n 32 --bom-n-higs 64 \

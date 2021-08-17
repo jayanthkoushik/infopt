@@ -15,9 +15,14 @@ Usage:
         --save-file "results/bpnn_ZrO2/random_$i.pkl" \
         --init-points 500 --optim-iters 100 \
         random
+
+    python exp_bpnn_optim.py evaluate-retrieval \
+        --res-pats "results/bpnn_ZrO2/nninf*.pkl" \
+        --save-file "results/bpnn_ZrO2/nninf_retrieval.csv"
 """
 
 from functools import partial
+from glob import glob
 import logging
 import os
 import pickle
@@ -28,6 +33,7 @@ from tqdm import trange
 from shinyutils import (
     CommaSeparatedInts,
     LazyHelpFormatter,
+    InputFileType,
 )
 from shinyutils.matwrap import MatWrap as mw
 
@@ -130,8 +136,20 @@ def main():
             func=partial(plot_performance, y=y, y_print=y_print))
         make_plot_parser(plotacq_parser)
 
+    # Evaluation of acquired points
+    plote_parser = sub_parsers.add_parser(
+        "evaluate-retrieval", formatter_class=LazyHelpFormatter
+    )
+    plote_parser.set_defaults(func=evaluate_retrieval)
+    plote_parser.add_argument("--res-pats", type=str, required=True)
+    plote_parser.add_argument("--save-file", type=OutputFileType())
+    plote_parser.add_argument("--beta", type=float, default=1.0)
+    plote_parser.add_argument("--cutoff", type=float, default=-0.8)
+
     args = base_arg_parser.parse_args()
-    if os.path.exists(args.save_file.name) and os.path.getsize(args.save_file.name) > 0:
+    if (hasattr(args.save_file, "name") and
+            os.path.exists(args.save_file.name) and
+            os.path.getsize(args.save_file.name) > 0):
         logging.info("save file %s exists, skipping", args.save_file.name)
     else:
         args.func(args)
@@ -311,7 +329,7 @@ def pretrain_bpnn(problem, model, args):
 def run_random_search(problem, args):
     """Random search baseline."""
 
-    X, Y = problem.get_data("search")
+    X, Y = problem.X_search, problem.Y_search
     indices = np.arange(Y.shape[0])
     rng = np.random.default_rng(args.seed + 1)
 
@@ -352,6 +370,53 @@ def run_random_search(problem, args):
     }
     pickle.dump(result, save_file.buffer)
     save_file.close()
+
+
+def evaluate_retrieval(args):
+    """Evaluate acquisitions using precision, recall, and f-beta scores."""
+
+    res_files = [res_file for res_file in glob(args.res_pats)
+                 if res_file.endswith(".pkl")]
+
+    precisions, recalls, fscores = [], [], []
+    for res_file in res_files:
+        with open(res_file, "rb") as f:
+            result = pickle.load(f)
+
+        problem = BPNNBandit(
+            input_dim=result["args"]["input_dim"],
+            search_split=result["args"]["search_split"],
+            n_test=result["args"]["n_test"],
+            rng=result["args"]["seed"],
+        )
+
+        X_retrieved = result["X"][result["args"]["init_points"]:]
+        precision, recall, fscore = problem.compute_metrics(
+            X_retrieved, beta=args.beta, cutoff=args.cutoff, split="search")
+        precisions.append(precision)
+        recalls.append(recall)
+        fscores.append(fscore)
+
+    p_avg, p_std = np.mean(precisions).item(), np.std(precisions).item()
+    r_avg, r_std = np.mean(recalls).item(), np.std(recalls).item()
+    f_avg, f_std = np.mean(fscores).item(), np.std(fscores).item()
+
+    logging.info("Files:     \t %s (N=%d)", args.res_pats, len(precisions))
+    logging.info("Precision: \t %.5f +/- %.5f", p_avg, p_std)
+    logging.info("Recall:    \t %.5f +/- %.5f", r_avg, r_std)
+    logging.info("F%g score: \t %.5f +/- %.5f", args.beta, f_avg, f_std)
+
+    if args.save_file:
+        args.save_file.writelines([
+            "Name,Value,StDev",
+            "FilePattern,%s," % args.res_pats,
+            "NFiles,%s," % len(precisions),
+            "Beta,%g," % args.beta,
+            "Precision,%.5f,%.5f" % (p_avg, p_std),
+            "Recall,%.5f,%.5f" % (r_avg, r_std),
+            "FScore,%.5f,%.5f" % (f_avg, f_std),
+        ])
+        args.save_file.close()
 
 
 if __name__ == "__main__":

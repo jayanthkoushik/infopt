@@ -206,6 +206,31 @@ class BPNNBandit(BaseObjective):
         X = self.index2feature[X.squeeze()]
         return X, Y
 
+    def get_low_energy_indices(self, cutoff=-0.8, split="search"):
+        """Retrieve the indices of low-energy candidates in a split,
+        determined by a energy cutoff."""
+        X, Y = {
+            "pretrain": (self.X_pretrain, self.Y_pretrain),
+            "search": (self.X_search, self.Y_search),
+            "test": (self.X_test, self.Y_test),
+        }[split]
+        indices = np.squeeze(Y < cutoff)
+        return X[indices]
+
+    def compute_metrics(self, X_retrieved,
+                        beta=1.0, cutoff=-0.8, split="search"):
+        """Computes the precision, recall, and the F-beta score for retrieval.
+        """
+        X_true = set(np.unique(
+            self.get_low_energy_indices(cutoff=cutoff, split=split).astype(int)
+        ))
+        X_retrieved = set(np.unique(X_retrieved).astype(int))
+        precision = len(X_true & X_retrieved) / max(1, len(X_retrieved))
+        recall = len(X_true & X_retrieved) / max(1, len(X_true))
+        fbeta = (1 + beta ** 2) * (precision * recall)
+        fbeta /= beta ** 2 * precision + recall + 1e-8
+        return precision, recall, fbeta
+
 
 class CdSBandit(BaseObjective):
     """Find low-energy CdS structures in a bandit setting.
