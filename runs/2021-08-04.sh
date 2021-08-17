@@ -39,6 +39,12 @@ done
 # Plotting
 #
 
+python exp_sim_optim.py plot-regrets --res-dir results/ackley5d-final \
+    --save-file results/ackley5d-final/regrets.pdf
+
+python exp_sim_optim.py plot-timing --res-dir results/ackley5d-final \
+    --save-file results/ackley5d-final/timing.pdf
+
 python exp_sim_optim.py plot-regrets --res-dir results/ackley5d \
     --save-file results/ackley5d/regrets_tf2.pdf \
     --skip-pats "results/ackley5d/nn_lbfgs[0-9]+.pkl"

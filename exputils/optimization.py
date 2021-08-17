@@ -66,6 +66,7 @@ def run_optim(fun, space, model, acq, normalize_Y, args, eval_hook=None):
         init_sample,
         normalize_Y=normalize_Y,
         model_update_interval=args.model_update_interval,
+        de_duplication=True,
     )
 
     fmin_hat = np.inf

@@ -62,6 +62,9 @@ def load_save_data(res_dir, skip_pats):
             if res["args"]["mcmc"]:
                 mname += " (MCMC)"
             acq_type = res["args"]["acq_type"].upper()
+        elif mname == "RANDOM":
+            mname = "Random"
+            acq_type = ""
         else:
             raise ValueError(f"unknown model type: {mname}")
         mname = f"{mname} {acq_type}".strip()
@@ -81,13 +84,23 @@ def load_save_data(res_dir, skip_pats):
             }
             if "regrets" in res:
                 df_row["R"] = res["regrets"][t]
+            if "mu_mins" in res:
+                df_row["mu"] = res["mu_mins"][t]
+            if "sig_mins" in res:
+                df_row["sigma"] = res["sig_mins"][t]
+            if "acq_mins" in res:
+                df_row["acq"] = res["acq_mins"][t]
+            if "mse_acq" in res:  # --diagnostic
+                df_row["mse"] = res["mse_acq"][t]
+            if "mse_test" in res:  # --diagnostic
+                df_row["mse_test"] = res["mse_test"][t]
             df_rows.append(df_row)
 
     data_df = pd.DataFrame(df_rows)
     return data_df
 
 
-def plot_performance(args, y="R", data_df=None):
+def plot_performance(args, y="R", data_df=None, y_print="R"):
     mw.configure(args.plotting_context, args.plotting_style, args.plotting_font)
     if data_df is None:
         data_df = load_save_data(args.res_dir, args.skip_pats)
@@ -112,7 +125,7 @@ def plot_performance(args, y="R", data_df=None):
     )
     ax.yaxis.tick_right()
     ax.set_xlabel("$t$")
-    ax.set_ylabel("${y}_t$")
+    ax.set_ylabel(rf"${y_print}_t$")
 
     if args.interactive:
         code.interact(local={**locals(), **globals()})

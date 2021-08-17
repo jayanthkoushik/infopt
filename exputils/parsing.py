@@ -163,6 +163,18 @@ def make_nn_tf2_parser(parser, mname):
         metavar="key=value,[...]",
         default=dict(learning_rate=0.02),
     )
+    nn_boparser.add_argument(
+        "--bom-optim-lr-scheduler-cls",
+        type=ClassType(tf.keras.optimizers.schedules.LearningRateSchedule),
+        metavar="lr_schedule",
+        default=tf.keras.optimizers.schedules.ExponentialDecay,
+    )
+    nn_boparser.add_argument(
+        "--bom-optim-lr-scheduler-params",
+        type=KeyValuePairsType(),
+        metavar="key=value,[...]",
+        default=dict(decay_steps=1000, decay_rate=0.96),
+    )
     nn_boparser.add_argument("--bom-up-batch-size", type=int, default=16)
     nn_boparser.add_argument("--bom-up-iters-per-point", type=int, default=50)
     nn_boparser.add_argument("--bom-up-upsample-new", type=float, default=None)

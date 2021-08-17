@@ -4,23 +4,25 @@ Uses the Behler-Parrinello Neural Network (BPNN).
 
 Usage:
     python exp_bpnn_optim.py run --seed $i \
-        --save-file "results/bpnn_ZrO2/nngreedy_$i.pkl" --tb-dir "logdir/bpnn_ZrO2/nngreedy_$i" \
-        --n-search 1200 --n-test 500 --exp-multiplier 0.0 \
-        --init-points 200 --optim-iters 200 --model-update-interval 8 \
+        --save-file "results/bpnn_ZrO2/nninf_$i.pkl" \
+        --tb-dir "logdir/bpnn_ZrO2/nninf_$i" \
+        --init-points 500 --optim-iters 100 --model-update-interval 4 \
         nninf --layer-sizes 64,64 --activation relu \
-        --bom-optim-params "learning_rate=0.005" --bom-weight-decay 1e-4 \
-        --bom-up-iters-per-point 50 --bom-up-upsample-new 0.25 \
-        --pretrain-epochs 50
+        --bom-optim-params "learning_rate=0.001" --bom-weight-decay 1e-4 \
+        --bom-up-batch-size 64 --bom-up-iters-per-point 25 --bom-up-upsample-new 0.1
 
-    python exp_bpnn_optim.py plot-regrets --res-dir results/bpnn_synthetic \
-    --save-file results/bpnn_synthetic/regrets.pdf
-    python exp_bpnn_optim.py plot-timing --res-dir results/bpnn_synthetic \
-    --save-file results/bpnn_synthetic/timing.pdf
+    python exp_bpnn_optim.py run --seed $i \
+        --save-file "results/bpnn_ZrO2/random_$i.pkl" \
+        --init-points 500 --optim-iters 100 \
+        random
 """
 
+from functools import partial
 import logging
 import os
 import pickle
+import time
+from tqdm import trange
 
 # Must be imported before GPy to configure matplotlib
 from shinyutils import (
@@ -46,7 +48,7 @@ from exputils.parsing import (
 from exputils.plotting import plot_performance, plot_timing
 
 # BPNN
-from exputils.objectives import BPNNBandit
+from exputils.objectives_bpnn import BPNNBandit
 from exputils.models_bpnn import make_bpnn, model_bpnn_inf, model_bpnn_mcd
 
 
@@ -65,13 +67,18 @@ def main():
     run_parser.add_argument(
         "--tb-dir", type=TensorboardWriterType(), dest="tb_writer", default=None
     )
+    # computes MSE over acquired and test points at each step
+    run_parser.add_argument("--diagnostic", action="store_true", default=False)
 
     bpnn_parser = run_parser.add_argument_group("bpnn bandit")
-    bpnn_parser.add_argument("--n-search", type=int, default=500)
+    # Some used for pre-training directly in infopt
+    bpnn_parser.add_argument("--input-dim", type=int, default=8)
+    bpnn_parser.add_argument("--search-split", type=float, default=1.0)
     bpnn_parser.add_argument("--n-test", type=int, default=500)
+    # Controls how pretrain/search is split (not test)
     bpnn_parser.add_argument("--seed", type=int, default=0)
     bpnn_parser.add_argument("--acq-n-candidates", type=int, default=np.inf)
-    bpnn_parser.add_argument("--acq-batch-size", type=int, default=None)
+    bpnn_parser.add_argument("--acq-batch-size", type=int, default=256)
 
     run_sub_parsers = run_parser.add_subparsers(dest="mname")
     run_sub_parsers.required = True
@@ -85,7 +92,7 @@ def main():
             required=True,
             metavar="int,int[,...]",
         )
-        mname_parser.add_argument("--activation", type=str, default="tanh")
+        mname_parser.add_argument("--activation", type=str, default="relu")
         mname_parser.add_argument("--dropout", type=float, default=0.0)
         mname_parser.add_argument("--dtype", type=tf.dtypes.DType,
                                   default=tf.float32)
@@ -94,6 +101,9 @@ def main():
         mname_parser.add_argument("--pretrain-epochs", type=int, default=20)
         make_nn_tf2_parser(mname_parser,
                            "nnmcd_tf2" if _mname == "nnmcd" else "nn_tf2")
+    run_sub_parsers.add_parser(
+        "random", formatter_class=LazyHelpFormatter
+    )
 
     plotr_parser = sub_parsers.add_parser(
         "plot-regrets", formatter_class=LazyHelpFormatter
@@ -108,6 +118,18 @@ def main():
     make_plot_parser(plott_parser)
     plott_parser.add_argument("--model-update-interval", type=int, default=1)
 
+    # Additional plotting options
+    for y, y_print in [
+        ("mu", r"\mu"), ("sigma", r"\sigma"), ("acq", r"\alpha"),
+        ("mse", r"\text{MSE}"), ("mse_test", r"\text{MSE-Test}"),
+    ]:
+        plotacq_parser = sub_parsers.add_parser(
+            f"plot-{y}", formatter_class=LazyHelpFormatter
+        )
+        plotacq_parser.set_defaults(
+            func=partial(plot_performance, y=y, y_print=y_print))
+        make_plot_parser(plotacq_parser)
+
     args = base_arg_parser.parse_args()
     if os.path.exists(args.save_file.name) and os.path.getsize(args.save_file.name) > 0:
         logging.info("save file %s exists, skipping", args.save_file.name)
@@ -120,12 +142,17 @@ def run(args):
 
     # Setup
     problem = BPNNBandit(
-        n_search=args.n_search,
+        input_dim=args.input_dim,
+        search_split=args.search_split,
         n_test=args.n_test,
         rng=args.seed,
     )
     logging.info("loaded BPNN data with a %d-%d-%d pretrain-search-test split",
                  problem.n_pretrain, problem.n_search, problem.n_test)
+
+    if args.mname == "random":
+        run_random_search(problem, args)
+        return
 
     # Pre-train the model
     base_model = make_bpnn(
@@ -136,7 +163,9 @@ def run(args):
         dtype=args.dtype,
     )
     base_model.summary(print_fn=logging.info)
-    pretrain_bpnn(problem, base_model, args)
+    if args.search_split < 1.0:
+        logging.warning(f"pretraining does not train the ihvp estimator")
+        pretrain_bpnn(problem, base_model, args)
 
     # Search over held-out examples
     domain = problem.get_domain()
@@ -157,20 +186,55 @@ def run(args):
     else:
         raise ValueError(f"unrecognized model name {args.mname}")
 
-    mu_mins, sig_mins, acq_mins, exp_w = [], [], [], []
+    monitors = {
+        "mu_mins": [],
+        "sig_mins": [],
+        "acq_mins": [],
+        "exp_w": [],
+    }
+    diagnostic = args.diagnostic
+    if diagnostic:
+        monitors.update({
+            "mse_acq": [],
+            "std_acq": [],
+            "mse_test": [],
+            "std_test": [],
+        })
+        X_test, _ = preprocess_ragged_input(
+            problem.get_features(problem.X_test), None)
 
     def eval_hook(n, bo, postfix_dict):
-        nonlocal mu_mins, sig_mins, acq_mins, exp_w
-        mu_min, sig_min = bo.model.predict(bo.X[-1:])
+        nonlocal monitors, diagnostic
         _exp_w = bo.acquisition.exploration_weight
-        acq_min = -mu_min + _exp_w * sig_min
-        mu_mins.append(mu_min.item())
-        sig_mins.append(sig_min.item())
-        acq_mins.append(acq_min.item())
-        exp_w.append(_exp_w)
-        postfix_dict["μ*"] = mu_mins[-1]
-        postfix_dict["σ*"] = sig_mins[-1]
-        postfix_dict["α*"] = acq_mins[-1]
+        mu, sig = bo.model.predict(bo.X[-1:])
+        acq = -mu + _exp_w * sig
+        mu, sig, acq = [t.item() for t in [mu, sig, acq]]
+        monitors["mu_mins"].append(mu)
+        monitors["sig_mins"].append(sig)
+        monitors["acq_mins"].append(acq)
+        monitors["exp_w"].append(_exp_w)
+        postfix_dict["μ*"] = mu
+        postfix_dict["σ*"] = sig
+        postfix_dict["α*"] = acq
+        if diagnostic:
+            nonlocal problem, X_test
+            # evaluate over acquired points
+            X, _ = preprocess_ragged_input(problem.get_features(bo.X), None)
+            preds = bo.model.net.predict(X, 256)
+            mse_acq = np.mean((preds - bo.Y) ** 2)
+            std_acq = np.std(preds)
+            monitors["mse_acq"].append(mse_acq)
+            monitors["std_acq"].append(std_acq)
+            postfix_dict["mse_acq"] = mse_acq
+            postfix_dict["std_acq"] = std_acq
+            # evaluate over test points
+            preds_test = bo.model.net.predict(X_test, 256)
+            mse_test = np.mean((preds_test - problem.Y_test) ** 2)
+            std_test = np.std(preds_test)
+            monitors["mse_test"].append(mse_test)
+            monitors["std_test"].append(std_test)
+            postfix_dict["mse_test"] = mse_test
+            postfix_dict["std_test"] = std_test
 
     result = run_optim(problem, space, model, acq, False, args, eval_hook)
 
@@ -183,12 +247,7 @@ def run(args):
     del result["bo"]
     result["fmin"] = problem.fmin
     result["args"] = vars(args)
-    result.update({
-        "mu_mins": mu_mins,
-        "sig_mins": sig_mins,
-        "acq_mins": acq_mins,
-        "exp_w": exp_w,
-    })
+    result.update(monitors)
     pickle.dump(result, save_file.buffer)
     save_file.close()
 
@@ -218,7 +277,11 @@ def preprocess_ragged_input(X, Y=None, dtype=tf.float32):
 
 
 def pretrain_bpnn(problem, model, args):
-    """Pretrain the base BPNN model using the pretraining data."""
+    """Pretrain the base BPNN model using the pretraining data.
+
+    *Deprecated:* This does not train the ihvp estimator.
+    Use --init-points to set the number of pre-training data directly.
+    """
 
     # Pretraining
     X, Y = problem.get_data("pretrain")
@@ -243,6 +306,52 @@ def pretrain_bpnn(problem, model, args):
     logging.info("test MSE after pretraining: %.5f", test_scores[1])
 
     return model
+
+
+def run_random_search(problem, args):
+    """Random search baseline."""
+
+    X, Y = problem.get_data("search")
+    indices = np.arange(Y.shape[0])
+    rng = np.random.default_rng(args.seed + 1)
+
+    init_points_idx = rng.choice(indices, args.init_points)
+    X_acq, Y_acq = X[init_points_idx], Y[init_points_idx]
+
+    # Sequentially monitor acquisitions so that we can compare with NN models
+    inst_regrets, regrets, iter_times = [], [], []
+    y_best = np.inf
+    t0 = time.time()
+    for _ in trange(args.optim_iters, desc="Random Selection", leave=True):
+        idx = rng.choice(indices)
+        X_acq = np.vstack([X_acq, X[idx, np.newaxis]])
+        Y_acq = np.vstack([Y_acq, Y[idx, np.newaxis]])
+        y_acq = Y_acq[-1].item()
+        y_best = min(y_acq, y_best)
+        if problem.fmin is not None:
+            inst_regrets.append(y_acq - problem.fmin)
+            regrets.append(y_best - problem.fmin)
+        iter_times.append(time.time() - t0)
+        t0 = time.time()
+
+    save_file = args.save_file
+    del args.save_file
+    del args.func
+    if args.tb_writer is not None:
+        args.tb_writer.close()
+    del args.tb_writer
+
+    result = {
+        "inst_regrets": inst_regrets,
+        "regrets": regrets,
+        "X": X_acq,
+        "y": Y_acq,
+        "iter_times": iter_times,
+        "fmin": problem.fmin,
+        "args": vars(args),
+    }
+    pickle.dump(result, save_file.buffer)
+    save_file.close()
 
 
 if __name__ == "__main__":

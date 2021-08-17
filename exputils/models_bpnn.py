@@ -26,6 +26,8 @@ def make_bpnn(
 
     Molecular energy can be computed by feeding each molecule as a batch and
     summing over their atomic energies.
+
+    This is a simplified version that uses the same NN for all atoms.
     """
     # Input: [num_mols, (num_atoms), input_dim]
     inputs = tf.keras.Input(shape=[None, input_dim], dtype=dtype, ragged=True)
@@ -44,6 +46,25 @@ def make_bpnn(
     return model
 
 
+# def TFSymSet_Linear_WithEle_Release(
+#         R, Zs,
+#         eles_, SFPsR_, Rr_cut, eleps_, SFPsA_, zeta, eta, Ra_cut,
+#         RadpEle, AngtEle, mil_j, mil_jk,
+# ):
+#     import TensorMol as tm
+#     inp_shp = tf.shape(R)
+#     nmol = inp_shp[0]
+#     natom = inp_shp[1]
+#     GMR = tf.reshape(
+#         tm.TFSymRSet_Linear_WithEle_Release(
+#             R, Zs, eles_, SFPsR_, eta, Rr_cut, RadpEle, mil_j
+#         ), [nmol, natom,-1])
+#     GMA = tf.reshape(
+#         tm.TFSymASet_Linear_WithEle(
+#             R, Zs, eleps_, SFPsA_, zeta,  eta, Ra_cut,  AngtEle, mil_jk
+#         ), [nmol, natom,-1])
+#     return tf.concat([GMR, GMA], axis=2)
+
 def make_bpnn_tm(params: dict):
     """Construct the BPNN model using TensorMol."""
 
@@ -54,8 +75,13 @@ def make_bpnn_tm(params: dict):
 
     # Variables: comes from TensorMolData.GetTrainBatch()
     tmdata = tm.TensorMolData()
+    instance = tm.MolInstance_DirectBP_EandG_SymFunction(tmdata)
+
+    # inputs
+    batch_size = 16
     xyzs, Zs, Elabels, grads, Radp_Ele, Angt_Elep, mil_j, mil_jk, natom_inv = \
-        tmdata.GetTrainBatch()
+        tmdata.GetTrainBatch(batch_size)
+
     xyzs = tf.convert_to_tensor(xyzs, dtype=tf_prec)
     Zs = tf.convert_to_tensor(Zs, dtype=tf_int)
     Elabels = tf.convert_to_tensor(Elabels, dtype=tf_prec)
@@ -67,7 +93,6 @@ def make_bpnn_tm(params: dict):
     natom_inv = tf.convert_to_tensor(natom_inv, dtype=tf_prec)
 
     # Constants: Comes from MolInstance*.__init__()
-    instance = tm.MolInstance_DirectBP_EandG_SymFunction(tmdata)
     Ele = tf.convert_to_tensor(instance.eles_np, dtype=tf_int)
     Elep = tf.convert_to_tensor(instance.eles_pairs_np, dtype=tf_int)
     # (SetANI1Param within __init__)
@@ -118,6 +143,10 @@ def model_bpnn_inf(base_model, space, args, feature_map=None):
         args.tb_writer,
     )
 
+    args.bom_optim_params["learning_rate"] = args.bom_optim_lr_scheduler_cls(
+        args.bom_optim_params["learning_rate"],
+        **args.bom_optim_lr_scheduler_params,
+    )
     bo_model_optim = args.bom_optim_cls(**args.bom_optim_params)
     bo_model = NNModelTF(
         base_model,
@@ -157,6 +186,10 @@ def model_bpnn_mcd(base_model, space, args, feature_map=None):
 
     Returns (model, acq).
     """
+    args.bom_optim_params["learning_rate"] = args.bom_optim_lr_scheduler_cls(
+        args.bom_optim_params["learning_rate"],
+        **args.bom_optim_lr_scheduler_params,
+    )
     bo_model_optim = args.bom_optim_cls(**args.bom_optim_params)
     bo_model = NNModelMCDTF(
         base_model,

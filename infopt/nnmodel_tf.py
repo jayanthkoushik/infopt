@@ -119,12 +119,17 @@ class NNModelTF(BOModel):
                 self.tb_writer.add_scalar(
                     "nn_model/log_loss", np.log10(loss), self.total_iter,
                 )
+                self.tb_writer.add_scalar(
+                    "nn_model/learning_rate",
+                    self.optim.lr(self.optim.iterations).numpy(),
+                    self.total_iter,
+                )
 
-            if abs(loss - old_loss) < abs(old_loss) * 1e-3:
-                print(f"loss converged after {i} updates, ending model updates")
+            if abs(loss - old_loss) < abs(old_loss) * 1e-4:
+                print(f"loss converged after {i} updates at loss {loss:.5f}")
                 break
             elif i >= iters - 1:
-                print(f"reached {iters} iterations")
+                print(f"reached {iters} iterations with loss {loss:.5f}")
                 break
             else:
                 old_loss = loss
