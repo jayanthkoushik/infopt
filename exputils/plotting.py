@@ -83,7 +83,10 @@ def load_save_data(res_dir, skip_pats):
                 **{f"x{j}": x_j for j, x_j in enumerate(res["X"][init_points + t])},
             }
             if "regrets" in res:
-                df_row["R"] = res["regrets"][t]
+                df_row["R"] = res["regrets"][t]  # pointwise regret gap
+                df_row["cR"] = sum(res["regrets"][:t])  # cumulative regret
+            if "inst_regrets" in res:
+                df_row["iR"] = res["inst_regrets"][t]
             if "mu_mins" in res:
                 df_row["mu"] = res["mu_mins"][t]
             if "sig_mins" in res:

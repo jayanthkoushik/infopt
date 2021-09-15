@@ -126,6 +126,7 @@ def main():
 
     # Additional plotting options
     for y, y_print in [
+        ("cR", "cR"), ("iR", r"\Delta"),
         ("mu", r"\mu"), ("sigma", r"\sigma"), ("acq", r"\alpha"),
         ("mse", r"\text{MSE}"), ("mse_test", r"\text{MSE-Test}"),
     ]:
@@ -408,13 +409,13 @@ def evaluate_retrieval(args):
 
     if args.save_file:
         args.save_file.writelines([
-            "Name,Value,StDev",
-            "FilePattern,%s," % args.res_pats,
-            "NFiles,%s," % len(precisions),
-            "Beta,%g," % args.beta,
-            "Precision,%.5f,%.5f" % (p_avg, p_std),
-            "Recall,%.5f,%.5f" % (r_avg, r_std),
-            "FScore,%.5f,%.5f" % (f_avg, f_std),
+            "Name,Value,StDev\n",
+            "FilePattern,%s,\n" % args.res_pats,
+            "NFiles,%s,\n" % len(precisions),
+            "Beta,%g,\n" % args.beta,
+            "Precision,%.5f,%.5f\n" % (p_avg, p_std),
+            "Recall,%.5f,%.5f\n" % (r_avg, r_std),
+            "FScore,%.5f,%.5f\n" % (f_avg, f_std),
         ])
         args.save_file.close()
 

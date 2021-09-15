@@ -136,6 +136,10 @@ done
 
 python exp_bpnn_optim.py plot-regrets --res-dir results/bpnn_ZrO2_v2 \
     --save-file results/bpnn_ZrO2_v2/regrets.pdf
+python exp_bpnn_optim.py plot-cR --res-dir results/bpnn_ZrO2_v2 \
+    --save-file results/bpnn_ZrO2_v2/cumul_regrets.pdf
+python exp_bpnn_optim.py plot-iR --res-dir results/bpnn_ZrO2_v2 \
+    --save-file results/bpnn_ZrO2_v2/inst_regrets.pdf
 python exp_bpnn_optim.py plot-timing --res-dir results/bpnn_ZrO2_v2 \
     --save-file results/bpnn_ZrO2_v2/timing.pdf
 python exp_bpnn_optim.py plot-sigma --res-dir results/bpnn_ZrO2_v2 \
