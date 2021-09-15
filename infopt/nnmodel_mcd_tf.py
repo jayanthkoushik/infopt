@@ -103,7 +103,7 @@ class NNModelMCDTF(BOModel):
             # Standard TF2 train step + L2 regularization
             with tf.GradientTape() as tape:
                 batch_Yhat = self.net(batch_X, training=True)
-                if isinstance(batch_Yhat, list):
+                if isinstance(batch_Yhat, tuple):
                     batch_Yhat = batch_Yhat[0]
                 loss = tf.reduce_mean(
                     self.criterion(batch_Y[:, tf.newaxis],
@@ -158,7 +158,7 @@ class NNModelMCDTF(BOModel):
                 if comp_grads:
                     tape.watch(batch)
                 yt_hat = self.net(batch, training=True)  # dropout!
-                if isinstance(yt_hat, list):
+                if isinstance(yt_hat, tuple):
                     yt_hat = yt_hat[0]
             preds.append(yt_hat)
             if comp_grads:

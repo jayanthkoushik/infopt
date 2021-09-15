@@ -99,7 +99,7 @@ class NNModelTF(BOModel):
             # Standard TF2 train step
             with tf.GradientTape() as tape:
                 batch_Yhat = self.net(batch_X, training=True)
-                if isinstance(batch_Yhat, list):
+                if isinstance(batch_Yhat, tuple):
                     batch_Yhat = batch_Yhat[0]
                 loss = tf.reduce_mean(
                     self.criterion(batch_Y[:, tf.newaxis],
@@ -139,8 +139,8 @@ class NNModelTF(BOModel):
         # Part 2: Update IHVP calculators (IterativeIHVP or LowRankIHVP)
         ihvp_n = min(self.n, self.ihvp_n)
         idxs = random.sample(range(self.n), ihvp_n)
-        if isinstance(X, list):
-            X_idxs = [tf.gather(t, idxs, axis=0) for t in X]
+        if isinstance(X, tuple):
+            X_idxs = tuple(tf.gather(t, idxs, axis=0) for t in X)
         else:
             X_idxs = tf.gather(X, idxs, axis=0)
         Y_idxs = tf.gather(Y, idxs, axis=0)
@@ -174,7 +174,7 @@ class NNModelTF(BOModel):
     def _compute_jacobian(self, X_idxs, Y_idxs):
         with tf.GradientTape() as inner_tape:
             Yhat_idxs = self.net(X_idxs, training=True)
-            if isinstance(Yhat_idxs, list):
+            if isinstance(Yhat_idxs, tuple):
                 Yhat_idxs = Yhat_idxs[0]
             losses = self.criterion(Y_idxs[:, tf.newaxis],
                                     Yhat_idxs[:, tf.newaxis])  # per example
@@ -194,7 +194,7 @@ class NNModelTF(BOModel):
         with tf.GradientTape(persistent=True) as outer_tape:
             with tf.GradientTape() as inner_tape:
                 m = self.net(x, training=False)
-                if isinstance(m, list):
+                if isinstance(m, tuple):
                     m = m[0]
 
             if comp_grads:
