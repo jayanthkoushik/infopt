@@ -6,6 +6,8 @@ import tensorflow as tf
 
 from GPyOpt.models.base import BOModel
 
+from infopt import utils
+
 
 class NNModelTF(BOModel):
     """TensorFlow neural network for modeling the objective function.
@@ -74,9 +76,15 @@ class NNModelTF(BOModel):
 
         # ratio of new samples in the training data
         if self.update_upsample_new is not None and self.update_upsample_new > 0.0:
-            old_data = tf.data.Dataset.from_tensor_slices((X[:self.n], Y[:self.n]))
-            n_new = X.shape[0] - self.n
-            new_data = tf.data.Dataset.from_tensor_slices((X[self.n:], Y[self.n:]))
+            old_data = tf.data.Dataset.from_tensor_slices(
+                (utils.slice_tensors(X, end=self.n),
+                 utils.slice_tensors(Y, end=self.n))
+            )
+            n_new = len(Y) - self.n
+            new_data = tf.data.Dataset.from_tensor_slices(
+                (utils.slice_tensors(X, start=self.n),
+                 utils.slice_tensors(Y, start=self.n))
+            )
             self.n = len(old_data) + len(new_data)
 
             p = self.update_upsample_new
@@ -98,9 +106,8 @@ class NNModelTF(BOModel):
         for i, (batch_X, batch_Y) in shuffled_batches.enumerate():
             # Standard TF2 train step
             with tf.GradientTape() as tape:
-                batch_Yhat = self.net(batch_X, training=True)
-                if isinstance(batch_Yhat, tuple):
-                    batch_Yhat = batch_Yhat[0]
+                batch_Yhat = utils.normalize_output(
+                    self.net(batch_X, training=True))
                 loss = tf.reduce_mean(
                     self.criterion(batch_Y[:, tf.newaxis],
                                    batch_Yhat[:, tf.newaxis])
@@ -121,10 +128,12 @@ class NNModelTF(BOModel):
                 self.tb_writer.add_scalar(
                     "nn_model/log_loss", np.log10(loss), self.total_iter,
                 )
+                try:
+                    lr = self.optim.lr.numpy()
+                except AttributeError:
+                    lr = self.optim.lr(self.optim.iterations).numpy()
                 self.tb_writer.add_scalar(
-                    "nn_model/learning_rate",
-                    self.optim.lr(self.optim.iterations).numpy(),
-                    self.total_iter,
+                    "nn_model/learning_rate", lr, self.total_iter,
                 )
 
             if abs(loss - old_loss) < abs(old_loss) * 1e-4:
@@ -139,12 +148,7 @@ class NNModelTF(BOModel):
         # Part 2: Update IHVP calculators (IterativeIHVP or LowRankIHVP)
         ihvp_n = min(self.n, self.ihvp_n)
         idxs = random.sample(range(self.n), ihvp_n)
-        if isinstance(X, tuple):
-            X_idxs = tuple(tf.gather(t, idxs, axis=0) for t in X)
-        else:
-            X_idxs = tf.gather(X, idxs, axis=0)
-        Y_idxs = tf.gather(Y, idxs, axis=0)
-        # X_idxs, Y_idxs = [tf.gather(t, idxs, axis=0) for t in [X, Y]]
+        X_idxs, Y_idxs = [utils.gather_tensors(t, idxs, axis=0) for t in [X, Y]]
 
         # TF2: an active outer gradient tape must be passed to ihvp
         #      for second-order gradient computations.
@@ -173,9 +177,7 @@ class NNModelTF(BOModel):
     @tf.function(experimental_relax_shapes=True)
     def _compute_jacobian(self, X_idxs, Y_idxs):
         with tf.GradientTape() as inner_tape:
-            Yhat_idxs = self.net(X_idxs, training=True)
-            if isinstance(Yhat_idxs, tuple):
-                Yhat_idxs = Yhat_idxs[0]
+            Yhat_idxs = utils.normalize_output(self.net(X_idxs, training=True))
             losses = self.criterion(Y_idxs[:, tf.newaxis],
                                     Yhat_idxs[:, tf.newaxis])  # per example
         dls = inner_tape.jacobian(losses, self.net.trainable_variables)
@@ -190,21 +192,43 @@ class NNModelTF(BOModel):
 
         if comp_grads:
             x = tf.Variable(x)
-        # variance = mean(influence^2)
-        with tf.GradientTape(persistent=True) as outer_tape:
-            with tf.GradientTape() as inner_tape:
-                m = self.net(x, training=False)
-                if isinstance(m, tuple):
-                    m = m[0]
+            # variance = mean(influence^2)
+            with tf.GradientTape(persistent=True) as outer_tape:
+                with tf.GradientTape() as inner_tape:
+                    m = utils.normalize_output(self.net(x, training=False))
 
-            if comp_grads:
                 grads = inner_tape.gradient(m,
                                             self.net.trainable_variables + [x])
                 dmdp, dmdx = grads[:-1], grads[-1]
                 self.dmdx = dmdx
                 self.dsdx = tf.zeros_like(x, dtype=tf.float32)
-            else:
-                dmdp = inner_tape.gradient(m, self.net.trainable_variables)
+
+                # Calculate s and dsdx
+                # hig: H^{-1}grad(L(z))
+                # influence: sum(dmdp * H^{-1}grad(L(z)))
+                dmdp_higs = [
+                    [tf.reduce_sum(tf.multiply(dmdp_i, tf.squeeze(hig_i)))
+                     for dmdp_i, hig_i in zip(dmdp, hig)]
+                    for hig in self.higs
+                ]
+                influences = [sum(dmdp_hig) for dmdp_hig in dmdp_higs]
+                v = tf.reduce_mean(tf.square(influences))
+
+            dmdpdx_higs = outer_tape.gradient(dmdp_higs, x)
+            self.dsdx = tf.reduce_mean([
+                influence * dmdpdx_hig
+                for influence, dmdpdx_hig in zip(influences, dmdpdx_higs)
+            ])
+
+            s = tf.math.sqrt(v)
+            if s > 0:
+                self.dsdx /= s
+
+        # No need for the outer tape in this case
+        else:
+            with tf.GradientTape() as inner_tape:
+                m = utils.normalize_output(self.net(x, training=False))
+            dmdp = inner_tape.gradient(m, self.net.trainable_variables)
 
             # Calculate s and dsdx
             # hig: H^{-1}grad(L(z))
@@ -216,33 +240,25 @@ class NNModelTF(BOModel):
             ]
             influences = [sum(dmdp_hig) for dmdp_hig in dmdp_higs]
             v = tf.reduce_mean(tf.square(influences))
+            s = tf.math.sqrt(v)
 
-        if comp_grads:
-            dmdpdx_higs = outer_tape.gradient(dmdp_higs, x)
-            self.dsdx = tf.reduce_mean([
-                influence * dmdpdx_hig
-                for influence, dmdpdx_hig in zip(influences, dmdpdx_higs)
-            ])
-
-        s = tf.math.sqrt(v)
-        if comp_grads:
-            if s > 0:
-                self.dsdx /= s  # TODO(yj): 2 * s?
-        else:
             self.dmdx = None
             self.dsdx = None
 
         return m, s, self.dmdx, self.dsdx
 
     def predict(self, X):
-        """Get the predicted mean and std at X."""
+        """Get the predicted mean and std at X.
+
+        TODO(yj): batchify this step.
+        """
         M, S = [], []
         if self.feature_map is not None:
             X, _ = self.feature_map(X, None)
         else:
             X = tf.convert_to_tensor(X, dtype=tf.float32)
-        for i in range(X.shape[0]):
-            x = X[i : i + 1]
+        for i in range(utils.get_size(X)):
+            x = utils.slice_tensors(X, i, i + 1)
             m, s, _, _ = self._predict_single(x, comp_grads=False)
             M.append(m)
             S.append(s.numpy().item())
@@ -257,8 +273,8 @@ class NNModelTF(BOModel):
             X, _ = self.feature_map(X, None)
         else:
             X = tf.convert_to_tensor(X, dtype=tf.float32)
-        for i in range(X.shape[0]):
-            x = X[i : i + 1]
+        for i in range(utils.get_size(X)):
+            x = utils.slice_tensors(X, i, i + 1)
             m, s, dm, ds = self._predict_single(x, comp_grads=True)
             M.append(m)
             S.append(s.numpy().item())

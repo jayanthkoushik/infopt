@@ -83,3 +83,24 @@ for i in $(seq -w 1 20); do
         --save-file "results/ackley5d/nngreedy_tf2_rerun_$i.pkl" --tb-dir "logdir/ackley5d/nngreedy_tf2_rerun_$i" \
         nn_tf2 --layer-sizes "16,16,8" --bom-optim-params "learning_rate=0.02" --bom-weight-decay 1e-4
 done
+
+
+# ---- debug test
+
+i=999
+# NN-INF (TF2)
+python exp_sim_optim.py run \
+    --fname ackley --fdim 5 --init-points 1 --optim-iters 100 \
+    --save-file "results/ackley5d_debug/nninf_tf2_$i.pkl" --tb-dir "logdir/ackley5d_debug/nninf_tf2_$i" \
+    nn_tf2 --layer-sizes "16,16,8" --bom-optim-params "learning_rate=0.02" --bom-weight-decay 1e-4
+# NN-Greedy (TF2)
+python exp_sim_optim.py run --use-const-exp-w 0.0 \
+    --fname ackley --fdim 5 --init-points 1 --optim-iters 100 \
+    --save-file "results/ackley5d_debug/nngreedy_tf2_$i.pkl" --tb-dir "logdir/ackley5d_debug/nngreedy_tf2_$i" \
+    nn_tf2 --layer-sizes "16,16,8" --bom-optim-params "learning_rate=0.02" --bom-weight-decay 1e-4
+# NN-MCD (TF2)
+python exp_sim_optim.py run \
+    --fname ackley --fdim 5 --init-points 1 --optim-iters 100 \
+    --save-file "results/ackley5d_debug/nnmcd_tf2_$i.pkl" --tb-dir "logdir/ackley5d_debug/nnmcd_tf2_$i" \
+    nnmcd_tf2 --layer-sizes "16,16,8" \
+    --bom-optim-params "learning_rate=0.02" --mcd-dropout 0.25 --mcd-lengthscale 1e-2 --mcd-tau 0.25

@@ -10,6 +10,8 @@ import tensorflow as tf
 from GPyOpt.acquisitions import AcquisitionLCB
 from GPyOpt.experiment_design import RandomDesign
 
+from infopt import utils
+
 
 class NNAcqTF(AcquisitionLCB):
 
@@ -223,10 +225,10 @@ class NNAcqCategoricalTF(AcquisitionLCB):
             assert m.shape[1] == s.shape[1] == 1
         # greedy w/ batched prediction (tf.keras.Model)
         else:
-            m = self.model.net.predict(self.candidates_features,
+            m = utils.normalize_output(
+                self.model.net.predict(self.candidates_features,
                                        self.batch_size)
-            if isinstance(m, tuple):
-                m = m[0]
+            )
             s = 0
         lcbs = m - self.exploration_weight * s  # N x 1
 

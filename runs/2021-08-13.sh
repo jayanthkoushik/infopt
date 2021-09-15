@@ -170,12 +170,12 @@ python exp_bpnn_optim.py evaluate-retrieval \
 # -----------------------------------------------------------------------------
 
 # NNINF Diagnostic (f*=-)
-python exp_bpnn_optim.py run --seed 198 --diagnostic \
-    --save-file "results/bpnn_ZrO2_v3/nninf_test.pkl" \
-    --tb-dir "logdir/bpnn_ZrO2_v3/nninf_test" \
-    --init-points 100 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 100 \
+python exp_bpnn_optim.py run --seed 199 --diagnostic \
+    --save-file "results/bpnn_ZrO2_v3/nninf_test3.pkl" \
+    --tb-dir "logdir/bpnn_ZrO2_v3/nninf_test3" \
+    --init-points 200 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 100 \
     nninf --layer-sizes 32,32,16 --activation gelu \
     --bom-optim-params "learning_rate=0.002" --bom-weight-decay 1e-5 \
-    --bom-up-batch-size 32 --bom-up-iters-per-point 500
+    --bom-up-batch-size 32 --bom-up-iters-per-point 25
 
 #     --ihvp-rank 32 --ihvp-batch-size 32 --bom-ihvp-n 32 --bom-n-higs 64 \
