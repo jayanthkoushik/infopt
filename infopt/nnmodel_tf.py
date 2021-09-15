@@ -139,7 +139,12 @@ class NNModelTF(BOModel):
         # Part 2: Update IHVP calculators (IterativeIHVP or LowRankIHVP)
         ihvp_n = min(self.n, self.ihvp_n)
         idxs = random.sample(range(self.n), ihvp_n)
-        X_idxs, Y_idxs = [tf.gather(t, idxs, axis=0) for t in [X, Y]]
+        if isinstance(X, list):
+            X_idxs = [tf.gather(t, idxs, axis=0) for t in X]
+        else:
+            X_idxs = tf.gather(X, idxs, axis=0)
+        Y_idxs = tf.gather(Y, idxs, axis=0)
+        # X_idxs, Y_idxs = [tf.gather(t, idxs, axis=0) for t in [X, Y]]
 
         # TF2: an active outer gradient tape must be passed to ihvp
         #      for second-order gradient computations.
