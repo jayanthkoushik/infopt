@@ -132,36 +132,15 @@ class LowRankIHVPTF(BaseIHVPTF):
     """
 
     @staticmethod
-    def _make_app_net(n_ins, n_h):
+    def _make_app_net(n_ins, n_h, dtype):
         """Make the autoencoding NN that approximates Hv."""
-        inputs = [tf.keras.Input(shape=n_in, name=f"input{i}")
+        inputs = [tf.keras.Input(shape=n_in, dtype=dtype, name=f"input{i}")
                   for i, n_in in enumerate(n_ins)]
         fcs = [tf.keras.layers.Dense(n_h, name=f"fc{i}")
                for i, n_in in enumerate(n_ins)]
         hidden = tf.reduce_sum([fc(inp) for inp, fc in zip(inputs, fcs)], 0)
         ys = [hidden @ tf.transpose(fc.kernel) for fc in fcs]
         return tf.keras.Model(inputs=inputs, outputs=ys, name="app_net")
-
-    class _AppNet(tf.keras.Model):
-        """Make the autoencoding NN that approximates Hv."""
-
-        def __init__(self, n_ins, n_h):
-            super().__init__(self)
-            self.n_ins = n_ins
-            self.n_h = n_h
-            self.fcs = [tf.keras.layers.Dense(n_h, name=f"fc{i}")
-                        for i, n_in in enumerate(n_ins)]
-
-        def call(self, inputs, training=None, mask=None):
-            assert len(inputs) == len(self.n_ins)
-            hidden = tf.reduce_sum([
-                fc(inp) for inp, fc in zip(inputs, self.fcs)
-            ], axis=0)
-            ys = [tf.matmul(hidden, tf.transpose(fc.kernel)) for fc in self.fcs]
-            return ys
-
-        def train_step(self, data):
-            raise NotImplementedError
 
     # pylint: disable=dangerous-default-value
     def __init__(
@@ -179,7 +158,9 @@ class LowRankIHVPTF(BaseIHVPTF):
     ):
         super().__init__()
         self.target_params = list(params)
+        self.rank = rank
         self.numels = [p.shape.num_elements() for p in self.target_params]
+        self.dtype = self.target_params[0].dtype
         self.criterion = criterion
         self.batch_size = batch_size
         self.iters_per_point = iters_per_point
@@ -191,10 +172,9 @@ class LowRankIHVPTF(BaseIHVPTF):
         self.tb_writer = tb_writer
 
         # Setup tf.keras model
-        self.app_net = self._make_app_net(self.numels, rank)
+        self.app_net = self._make_app_net(self.numels, self.rank, self.dtype)
         self.app_net.compile(self.optim, loss=self.criterion)
 
-        self.P = tf.zeros(shape=(sum(self.numels), rank))
         self._update_wew()
 
     def _update_wew(self):
@@ -228,14 +208,8 @@ class LowRankIHVPTF(BaseIHVPTF):
         assert self.outer_tape._persistent, \
             f"Second-order gradient tape must be persistent"
         train_vs = vs
-        # TODO(yj): batchify
-        # for v in vs:
-        #     # first dimension is batch size (1)
-        #     train_vs.append([tf.reshape(v_i, [1, -1]) for v_i in v])
         n_new = max(1, len(train_vs) - self.n_train)
         self.n_train = len(train_vs)
-
-        # grad_target_params = [tf.reshape(g, [-1]) for g in self.grad_params]
 
         # Step 1: Make batches of (v, hvp(v)) for training app_net
         idx = 0
@@ -257,14 +231,6 @@ class LowRankIHVPTF(BaseIHVPTF):
             Y_train.extend(batch_Y)
 
         # Step 2: Train app_net
-        # self.app_net.fit(
-        #     train_vs,
-        #     Y_train,
-        #     batch_size,
-        #     (self.iters_per_point * n_new) // self.n_train,
-        #     verbose=0,
-        #     shuffle=True,
-        # )
         iters = self.iters_per_point * n_new
         for _ in range(iters):
             idxs = random.sample(range(self.n_train), batch_size)
