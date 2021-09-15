@@ -99,6 +99,8 @@ class NNModelTF(BOModel):
             # Standard TF2 train step
             with tf.GradientTape() as tape:
                 batch_Yhat = self.net(batch_X, training=True)
+                if isinstance(batch_Yhat, list):
+                    batch_Yhat = batch_Yhat[0]
                 loss = tf.reduce_mean(
                     self.criterion(batch_Y[:, tf.newaxis],
                                    batch_Yhat[:, tf.newaxis])
@@ -167,6 +169,8 @@ class NNModelTF(BOModel):
     def _compute_jacobian(self, X_idxs, Y_idxs):
         with tf.GradientTape() as inner_tape:
             Yhat_idxs = self.net(X_idxs, training=True)
+            if isinstance(Yhat_idxs, list):
+                Yhat_idxs = Yhat_idxs[0]
             losses = self.criterion(Y_idxs[:, tf.newaxis],
                                     Yhat_idxs[:, tf.newaxis])  # per example
         dls = inner_tape.jacobian(losses, self.net.trainable_variables)
@@ -185,6 +189,9 @@ class NNModelTF(BOModel):
         with tf.GradientTape(persistent=True) as outer_tape:
             with tf.GradientTape() as inner_tape:
                 m = self.net(x, training=False)
+                if isinstance(m, list):
+                    m = m[0]
+
             if comp_grads:
                 grads = inner_tape.gradient(m,
                                             self.net.trainable_variables + [x])
