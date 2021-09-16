@@ -54,14 +54,14 @@ def model_bpnn_inf(base_model, space, args, feature_map=None):
     ihvp = LowRankIHVPTF(
         base_model.trainable_variables,
         args.ihvp_rank,
-        args.ihvp_batch_size,
-        args.ihvp_iters_per_point,
-        args.ihvp_loss_cls(),
-        args.ihvp_optim_cls,
-        args.ihvp_optim_params,
-        args.ihvp_ckpt_every,
-        DEVICE,
-        args.tb_writer,
+        batch_size=args.ihvp_batch_size,
+        iters_per_point=args.ihvp_iters_per_point,
+        criterion=args.ihvp_loss_cls(),
+        optim_cls=args.ihvp_optim_cls,
+        optim_kwargs=args.ihvp_optim_params,
+        ckpt_every=args.ihvp_ckpt_every,
+        device=DEVICE,
+        tb_writer=args.tb_writer,
     )
 
     args.bom_optim_params["learning_rate"] = args.bom_optim_lr_scheduler_cls(
@@ -73,29 +73,30 @@ def model_bpnn_inf(base_model, space, args, feature_map=None):
         base_model,
         ihvp,
         bo_model_optim,
-        args.bom_loss_cls(reduction=tf.keras.losses.Reduction.NONE),
-        args.bom_up_batch_size,
-        args.bom_up_iters_per_point,
-        args.bom_up_upsample_new,
-        args.bom_n_higs,
-        args.bom_ihvp_n,
-        args.bom_weight_decay,
-        args.bom_ckpt_every,
-        DEVICE,
-        args.tb_writer,
+        criterion=args.bom_loss_cls(reduction=tf.keras.losses.Reduction.NONE),
+        update_batch_size=args.bom_up_batch_size,
+        update_iters_per_point=args.bom_up_iters_per_point,
+        update_upsample_new=args.bom_up_upsample_new,
+        early_stopping=args.bom_early_stopping,
+        num_higs=args.bom_n_higs,
+        ihvp_n=args.bom_ihvp_n,
+        weight_decay=args.bom_weight_decay,
+        ckpt_every=args.bom_ckpt_every,
+        device=DEVICE,
+        tb_writer=args.tb_writer,
         feature_map=feature_map,
     )
 
     acq = NNAcqCategoricalTF(
         bo_model,
         space,
-        0,  # set in optimization.py#L88 (using args)
-        args.acq_n_candidates,
-        args.acq_batch_size,
-        args.tb_writer,
-        args.acq_reinit_optim_start,
-        None,  # use random sampler
-        feature_map,
+        exploration_weight=0,  # set in optimization.py#L88 (using args)
+        n_candidates=args.acq_n_candidates,
+        batch_size=args.acq_batch_size,
+        tb_writer=args.tb_writer,
+        reinit_optim_start=args.acq_reinit_optim_start,
+        x_sampler=None,  # use random sampler
+        feature_map=feature_map,
     )
 
     return bo_model, acq
@@ -115,30 +116,31 @@ def model_bpnn_mcd(base_model, space, args, feature_map=None):
     bo_model = NNModelMCDTF(
         base_model,
         bo_model_optim,
-        args.bom_loss_cls(reduction=tf.keras.losses.Reduction.NONE),
-        args.bom_up_batch_size,
-        args.bom_up_iters_per_point,
-        args.bom_up_upsample_new,
-        args.mcd_dropout,
-        args.mcd_n_dropout_samples,
-        args.mcd_lengthscale,
-        args.mcd_tau,
-        args.bom_ckpt_every,
-        DEVICE,
-        args.tb_writer,
+        criterion=args.bom_loss_cls(reduction=tf.keras.losses.Reduction.NONE),
+        update_batch_size=args.bom_up_batch_size,
+        update_iters_per_point=args.bom_up_iters_per_point,
+        update_upsample_new=args.bom_up_upsample_new,
+        early_stopping=args.bom_early_stopping,
+        dropout=args.mcd_dropout,
+        n_dropout_samples=args.mcd_n_dropout_samples,
+        lengthscale=args.mcd_lengthscale,
+        tau=args.mcd_tau,
+        ckpt_every=args.bom_ckpt_every,
+        device=DEVICE,
+        tb_writer=args.tb_writer,
         feature_map=feature_map,
     )
 
     acq = NNAcqCategoricalTF(
         bo_model,
         space,
-        0,  # set in optimization.py#L88 (using args)
-        args.acq_n_candidates,
-        args.acq_batch_size,
-        args.tb_writer,
-        args.acq_reinit_optim_start,
-        None,  # use random sampler
-        feature_map,
+        exploration_weight=0,  # set in optimization.py#L88 (using args)
+        n_candidates=args.acq_n_candidates,
+        batch_size=args.acq_batch_size,
+        tb_writer=args.tb_writer,
+        reinit_optim_start=args.acq_reinit_optim_start,
+        x_sampler=None,  # use random sampler
+        feature_map=feature_map,
     )
 
     return bo_model, acq
