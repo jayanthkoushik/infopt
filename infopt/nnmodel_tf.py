@@ -1,5 +1,6 @@
 """nnmodel_tf.py: a TensorFlow neural network model for GPyOpt."""
 
+import logging
 import random
 import numpy as np
 import tensorflow as tf
@@ -29,6 +30,7 @@ class NNModelTF(BOModel):
         update_batch_size=np.inf,
         update_iters_per_point=25,
         update_upsample_new=None,
+        early_stopping=False,
         num_higs=np.inf,
         ihvp_n=np.inf,
         weight_decay=1e-5,
@@ -52,6 +54,7 @@ class NNModelTF(BOModel):
         self.update_batch_size = update_batch_size
         self.update_iters_per_point = update_iters_per_point
         self.update_upsample_new = update_upsample_new
+        self.early_stopping = early_stopping
         self.num_higs = num_higs
         self.ihvp_n = ihvp_n
         self.weight_decay = weight_decay
@@ -136,11 +139,14 @@ class NNModelTF(BOModel):
                     "nn_model/learning_rate", lr, self.total_iter,
                 )
 
-            if abs(loss - old_loss) < abs(old_loss) * 1e-4:
-                print(f"loss converged after {i} updates at loss {loss:.5f}")
+            if (self.early_stopping and
+                    abs(loss - old_loss) < abs(old_loss) * 1e-4):
+                logging.info(f"loss converged after %d updates at loss %.5f",
+                             i, loss)
                 break
             elif i >= iters - 1:
-                print(f"reached {iters} iterations with loss {loss:.5f}")
+                logging.info(f"reached %d iterations with loss %.5f",
+                             iters, loss)
                 break
             else:
                 old_loss = loss

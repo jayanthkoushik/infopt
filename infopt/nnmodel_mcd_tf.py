@@ -1,6 +1,7 @@
 """nnmodel_mcd_tf.py: a TensorFlow neural network model with MC Dropout
  for GPyOpt."""
 
+import logging
 import numpy as np
 import tensorflow as tf
 
@@ -27,6 +28,7 @@ class NNModelMCDTF(BOModel):
         update_batch_size=np.inf,
         update_iters_per_point=25,
         update_upsample_new=None,
+        early_stopping=False,
         dropout=0.05,  # defined in net?
         n_dropout_samples=100,
         lengthscale=1e-2,
@@ -45,6 +47,7 @@ class NNModelMCDTF(BOModel):
             f"criterion must have reduction=='none', "
             f"but got {self.criterion.reduction}"
         )
+        self.early_stopping = early_stopping
         # MCD parameters
         self.dropout = dropout
         self.n_dropout_samples = n_dropout_samples
@@ -137,11 +140,14 @@ class NNModelMCDTF(BOModel):
                     "nn_model/learning_rate", lr, self.total_iter,
                 )
 
-            if abs(loss - old_loss) < abs(old_loss) * 1e-4:
-                print(f"loss converged after {i} updates at loss {loss:.5f}")
+            if (self.early_stopping and
+                    abs(loss - old_loss) < abs(old_loss) * 1e-4):
+                logging.info(f"loss converged after %d updates at loss %.5f",
+                             i, loss)
                 break
             elif i >= iters - 1:
-                print(f"reached {iters} iterations with loss {loss:.5f}")
+                logging.info(f"reached %d iterations with loss %.5f",
+                             iters, loss)
                 break
             else:
                 old_loss = loss
