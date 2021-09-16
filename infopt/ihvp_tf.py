@@ -181,7 +181,9 @@ class LowRankIHVPTF(BaseIHVPTF):
         """Update the helper tensors used for get_ihvp."""
         self.P = tf.concat([self.app_net.get_layer(f"fc{i}").kernel
                             for i in range(len(self.target_params))], axis=0)
-        S, U, V = tf.linalg.svd(self.P)
+        # svd on GPU is too memory-intensive (and often slow) in tf2, somehow
+        with tf.device("/cpu:0"):
+            S, U, _ = tf.linalg.svd(self.P)
         We = U / (S ** 2)
         Wt = tf.transpose(U)
 
