@@ -165,7 +165,9 @@ class NNModelMCDTF(BOModel):
             with tf.GradientTape() as tape:
                 if comp_grads:
                     tape.watch(batch)
-                yt_hat = utils.normalize_output(self.net(batch, training=True))
+                yt_hat = tf.experimental.numpy.atleast_2d(
+                    utils.normalize_output(self.net(batch, training=True))
+                )
             preds.append(yt_hat)
             if comp_grads:
                 dytdx = tape.gradient(yt_hat, batch)
