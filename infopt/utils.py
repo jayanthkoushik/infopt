@@ -7,6 +7,22 @@ import numpy as np
 import tensorflow as tf
 
 
+def ensure_2d(tensor: tf.Tensor):
+    """Ensure that the tensor is 2d in a "row-major" manner.
+
+    e.g.,
+        () -> (1, 1)
+        (n, ) -> (n, 1)
+        (n, p) -> (n, p)
+        (n, p, q) -> Error
+    """
+    if tensor.ndim > 2:
+        raise ValueError("input tensor to ensure_2d() must have ndim <= 2")
+    elif tensor.ndim == 2:
+        return tensor
+    return tf.reshape(tensor, [-1, 1])
+
+
 def normalize_output(
         out: Union[tf.Tensor, Tuple[tf.Tensor], List[tf.Tensor]],
         index: int = 0,

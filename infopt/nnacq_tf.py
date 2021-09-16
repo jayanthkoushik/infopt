@@ -222,10 +222,12 @@ class NNAcqCategoricalTF(AcquisitionLCB):
         # loops over each x; slow
         if self.exploration_weight > 0:
             m, s = self.model.predict(self.candidates)
-            assert m.shape[1] == s.shape[1] == 1
+            assert m.shape[1] == s.shape[1] == 1, (
+                f"m.shape: {m.shape}, s.shape: {s.shape}"
+            )
         # greedy w/ batched prediction (tf.keras.Model)
         else:
-            m = tf.experimental.numpy.atleast_2d(utils.normalize_output(
+            m = utils.ensure_2d(utils.normalize_output(
                 self.model.net.predict(self.candidates_features,
                                        self.batch_size)
             ))

@@ -201,9 +201,9 @@ class NNModelTF(BOModel):
             # variance = mean(influence^2)
             with tf.GradientTape(persistent=True) as outer_tape:
                 with tf.GradientTape() as inner_tape:
-                    m = tf.experimental.numpy.atleast_2d(
-                        utils.normalize_output(self.net(x, training=False))
-                    )
+                    m = utils.ensure_2d(utils.normalize_output(
+                        self.net(x, training=False)
+                    ))
 
                 grads = inner_tape.gradient(m,
                                             self.net.trainable_variables + [x])
@@ -235,9 +235,9 @@ class NNModelTF(BOModel):
         # No need for the outer tape in this case
         else:
             with tf.GradientTape() as inner_tape:
-                m = tf.experimental.numpy.atleast_2d(
-                    utils.normalize_output(self.net(x, training=False))
-                )
+                m = utils.ensure_2d(utils.normalize_output(
+                    self.net(x, training=False)
+                ))
             dmdp = inner_tape.gradient(m, self.net.trainable_variables)
 
             # Calculate s and dsdx
