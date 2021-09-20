@@ -222,7 +222,7 @@ class NNAcqCategoricalTF(AcquisitionLCB):
         # loops over each x; slow
         if self.exploration_weight > 0:
             m, s = self.model.predict(self.candidates)
-            assert m.shape[1] == s.shape[1] == 1, (
+            assert len(m.shape) == 2 and m.shape[1] == s.shape[1] == 1, (
                 f"m.shape: {m.shape}, s.shape: {s.shape}"
             )
         # greedy w/ batched prediction (tf.keras.Model)

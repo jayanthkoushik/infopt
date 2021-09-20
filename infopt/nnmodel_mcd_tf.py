@@ -2,6 +2,7 @@
  for GPyOpt."""
 
 import logging
+import time
 import numpy as np
 import tensorflow as tf
 
@@ -109,6 +110,7 @@ class NNModelMCDTF(BOModel):
                (2. * self.n * self.tau))
 
         old_loss = 1e-8
+        t0 = time.time()
         for i, (batch_X, batch_Y) in shuffled_batches.enumerate():
             # Standard TF2 train step + L2 regularization
             with tf.GradientTape() as tape:
@@ -127,23 +129,28 @@ class NNModelMCDTF(BOModel):
 
             loss = loss.numpy().item()
             self.total_iter += 1
-            if (self.tb_writer is not None and
-                    self.total_iter % self.ckpt_every == 0):
-                self.tb_writer.add_scalar(
-                    "nn_model/log_loss", np.log10(loss), self.total_iter,
-                )
+            if self.total_iter % self.ckpt_every == 0:
+                time_per_iter = (time.time() - t0) / self.ckpt_every
+                t0 = time.time()
                 try:
                     lr = self.optim.lr.numpy()
                 except AttributeError:
                     lr = self.optim.lr(self.optim.iterations).numpy()
-                self.tb_writer.add_scalar(
-                    "nn_model/learning_rate", lr, self.total_iter,
-                )
-
+                logging.info("model update %5d (%5d/%5d) --- "
+                             "loss %.4f, lr %.4f, %.4f s/it",
+                             self.total_iter, i + 1, iters,
+                             loss, lr, time_per_iter)
+                if self.tb_writer is not None:
+                    self.tb_writer.add_scalar(
+                        "nn_model/log_loss", np.log10(loss), self.total_iter,
+                    )
+                    self.tb_writer.add_scalar(
+                        "nn_model/learning_rate", lr, self.total_iter,
+                    )
             if (self.early_stopping and
                     abs(loss - old_loss) < abs(old_loss) * 1e-4):
                 logging.info(f"loss converged after %d updates at loss %.5f",
-                             i, loss)
+                             i + 1, loss)
                 break
             elif i >= iters - 1:
                 logging.info(f"reached %d iterations with loss %.5f",
@@ -235,9 +242,9 @@ class NNModelMCDTF(BOModel):
         predictions = tf.transpose(tf.reshape(predictions,
                                               (T, utils.get_size(X))))
 
-        M = tf.reduce_mean(predictions, axis=1).numpy()
+        M = tf.reduce_mean(predictions, axis=1, keepdims=True).numpy()
         var = 1. / self.tau + \
-            tf.math.reduce_variance(predictions, axis=1).numpy()
+            tf.math.reduce_variance(predictions, axis=1, keepdims=True).numpy()
         S = np.sqrt(var)
         return M, S
 
