@@ -42,10 +42,12 @@ def load_save_data(res_dir, skip_pats):
             # specify weight decay if not zero
             if "weight_decay" in res["args"]["bom_optim_params"]:
                 wd = res["args"]["bom_optim_params"]["weight_decay"]
-                suffix.append(f"wd{wd}")
+                if wd > 0.0:
+                    suffix.append(f"wd{wd}")
             elif "bom_weight_decay" in res["args"]:  # TF2
                 wd = res["args"]["bom_weight_decay"]
-                suffix.append(f"wd{wd}")
+                if wd > 0.0:
+                    suffix.append(f"wd{wd}")
         elif mname in ["NNMCD", "NNMCD_TF2"]:
             mname = "NN"
             acq_type = "MCD"
