@@ -230,7 +230,7 @@ class NNAcqCategoricalTF(AcquisitionLCB):
             m = utils.ensure_2d(utils.normalize_output(
                 self.model.net.predict(self.candidates_features,
                                        self.batch_size)
-            ))
+            )).numpy()
             s = 0
         lcbs = m - self.exploration_weight * s  # N x 1
 
