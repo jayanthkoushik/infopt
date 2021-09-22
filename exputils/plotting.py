@@ -50,7 +50,12 @@ def load_save_data(res_dir, skip_pats):
                     suffix.append(f"wd{wd}")
         elif mname in ["NNMCD", "NNMCD_TF2"]:
             mname = "NN"
-            acq_type = "MCD"
+            # handle greedy case (exploration weight == 0)
+            if (res["args"]["use_const_exp_w"] == 0.0 or
+                    res["args"]["exp_multiplier"] == 0.0):
+                acq_type = "Greedy"
+            else:
+                acq_type = "MCD"
             dropout = res["args"]["mcd_dropout"]
             suffix.append(f"drop{dropout}")
         elif mname == "NR":
