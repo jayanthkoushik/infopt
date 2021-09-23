@@ -48,6 +48,8 @@ def load_save_data(res_dir, skip_pats):
                 wd = res["args"]["bom_weight_decay"]
                 if wd > 0.0:
                     suffix.append(f"wd{wd}")
+            if res["args"].get("share_weights", False):  # shared weights (BPNN)
+                suffix.append("shared")
         elif mname in ["NNMCD", "NNMCD_TF2"]:
             mname = "NN"
             # handle greedy case (exploration weight == 0)
@@ -56,8 +58,10 @@ def load_save_data(res_dir, skip_pats):
                 acq_type = "Greedy"
             else:
                 acq_type = "MCD"
-            dropout = res["args"]["mcd_dropout"]
-            suffix.append(f"drop{dropout}")
+                dropout = res["args"]["mcd_dropout"]
+                suffix.append(f"drop{dropout}")
+            if res["args"].get("share_weights", False):  # shared weights (BPNN)
+                suffix.append("shared")
         elif mname == "NR":
             if res["args"]["use_nrif"]:
                 acq_type = "INF"
