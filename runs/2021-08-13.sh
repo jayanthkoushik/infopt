@@ -170,20 +170,22 @@ python exp_bpnn_optim.py evaluate-retrieval \
 # -----------------------------------------------------------------------------
 
 # NNINF Diagnostic (f*=-)
-python exp_bpnn_optim.py run --seed 196 --diagnostic \
-    --save-file "results/bpnn_ZrO2_v3/nninf_test4.pkl" \
-    --tb-dir "logdir/bpnn_ZrO2_v3/nninf_test4" \
-    --init-points 500 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 100 \
+python exp_bpnn_optim.py run --seed 1 \
+    --save-file "results/bpnn_ZrO2_v3/recalibration/nninf_test1.pkl" \
+    --tb-dir "logdir/bpnn_ZrO2_v3/recalibration/nninf_test1" \
+    --init-points 1000 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 1000 \
     nninf --layer-sizes 32,32,16 --activation gelu \
+    --bom-recal-mode interval --bom-recal-setsize 500 \
     --bom-optim-params "learning_rate=0.002" --bom-weight-decay 1e-5 \
-    --bom-up-batch-size 32 --bom-up-iters-per-point 50 --bom-early-stopping
+    --bom-up-batch-size 16 --bom-up-iters-per-point 500 --bom-early-stopping
 
 # NNMCD Diagnostic
-python exp_bpnn_optim.py run --seed 196 --diagnostic \
-    --save-file "results/bpnn_ZrO2_v3/nnmcd_test4.pkl" \
-    --tb-dir "logdir/bpnn_ZrO2_v3/nnmcd_test4" \
-    --init-points 500 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 100 \
+python exp_bpnn_optim.py run --seed 301 \
+    --save-file "results/bpnn_ZrO2_v3/nnmcd_test1.pkl" \
+    --tb-dir "logdir/bpnn_ZrO2_v3/nnmcd_test1" \
+    --init-points 1000 --optim-iters 100 --model-update-interval 4 --acq-n-candidates 1000 \
     nnmcd --layer-sizes 32,32,16 --activation gelu \
+    --bom-recal-mode interval --bom-recal-setsize 500 \
     --bom-optim-params "learning_rate=0.002" \
-    --bom-up-batch-size 32 --bom-up-iters-per-point 50 --bom-early-stopping \
+    --bom-up-batch-size 16 --bom-up-iters-per-point 500 --bom-early-stopping \
     --mcd-dropout 0.25 --mcd-lengthscale 0.1 --mcd-tau 1.0

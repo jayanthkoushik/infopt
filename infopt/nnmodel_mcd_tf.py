@@ -8,7 +8,10 @@ import tensorflow as tf
 
 from GPyOpt.models.base import BOModel
 
+import uncertainty_toolbox as uct
+
 from infopt import utils
+from infopt.recalibration import get_recalibrator
 
 
 class NNModelMCDTF(BOModel):
@@ -28,12 +31,16 @@ class NNModelMCDTF(BOModel):
             reduction=tf.keras.losses.Reduction.NONE),
         update_batch_size=np.inf,
         update_iters_per_point=25,
+        update_max_iters=np.inf,
         update_upsample_new=None,
         early_stopping=False,
         dropout=0.05,  # defined in net?
         n_dropout_samples=100,
         lengthscale=1e-2,
         tau=1.0,
+        recal_mode=None,
+        recal_setsize=500,
+        recal_kwargs=None,
         ckpt_every=1,
         device="cpu",
         tb_writer=None,
@@ -58,7 +65,12 @@ class NNModelMCDTF(BOModel):
         self.n = 0
         self.update_batch_size = update_batch_size
         self.update_iters_per_point = update_iters_per_point
+        self.update_max_iters = update_max_iters
         self.update_upsample_new = update_upsample_new
+        self.recal_mode = recal_mode
+        self.recal_setsize = recal_setsize
+        self.recal_kwargs = recal_kwargs
+        self.recalibrator = None
         self.ckpt_every = ckpt_every
         self.total_iter = 0
         self.device = device
@@ -71,6 +83,23 @@ class NNModelMCDTF(BOModel):
         """Train the NN using (X_all, Y_all) and get new IHVP estimates."""
         # Note: X_new and Y_new are ignored
         # pylint: disable=unused-argument
+
+        # Leave a held-out calibration set as part of the initial points
+        if self.recal_mode is not None:
+            assert self.recal_setsize < len(Y_all), (
+                "recalibration set size {} "
+                "must be smaller than init points {}"
+            ).format(self.recal_setsize, len(Y_all))
+            X_recal = X_all[:self.recal_setsize]
+            Y_recal = Y_all[:self.recal_setsize]
+            X_all = X_all[self.recal_setsize:]
+            Y_all = Y_all[self.recal_setsize:]
+            logging.info("model update set: %d, recalibration set: %d",
+                         len(Y_all), len(Y_recal))
+        else:
+            X_recal = None
+            Y_recal = None
+
         if self.feature_map is not None:
             X, Y = self.feature_map(X_all, Y_all)
         else:
@@ -100,7 +129,7 @@ class NNModelMCDTF(BOModel):
             self.n = len(data)
 
         # Train NN using current data points
-        iters = self.update_iters_per_point * n_new
+        iters = min(self.update_iters_per_point * n_new, self.update_max_iters)
         batch_size = min(self.n, self.update_batch_size)
 
         # Change from torch: shuffle all data once before iterating through all
@@ -136,10 +165,10 @@ class NNModelMCDTF(BOModel):
                     lr = self.optim.lr.numpy()
                 except AttributeError:
                     lr = self.optim.lr(self.optim.iterations).numpy()
-                logging.info("model update %5d (%5d/%5d) --- "
-                             "loss %.4f, lr %.4f, %.4f s/it",
-                             self.total_iter, i + 1, iters,
-                             loss, lr, time_per_iter)
+                # logging.info("model update %5d (%5d/%5d) --- "
+                #              "loss %.4f, lr %.4f, %.4f s/it",
+                #              self.total_iter, i + 1, iters,
+                #              loss, lr, time_per_iter)
                 if self.tb_writer is not None:
                     self.tb_writer.add_scalar(
                         "nn_model/log_loss", np.log10(loss), self.total_iter,
@@ -158,6 +187,54 @@ class NNModelMCDTF(BOModel):
                 break
             else:
                 old_loss = loss
+
+        # update recalibrator & compute calibration error
+        if self.recal_mode is not None:
+            Y_pred, Y_std = self.update_recalibrator(X_recal, Y_recal)
+            y_pred, y_std, y_recal = [y.squeeze(1)
+                                      for y in [Y_pred, Y_std, Y_recal]]
+            ece_uncal = uct.metrics_calibration.mean_absolute_calibration_error(
+                y_pred, y_std, y_recal,
+            )
+            Y_std = self.recalibrate(Y_pred, Y_std)
+            y_std = Y_std.squeeze(1)
+            ece_recal = uct.metrics_calibration.mean_absolute_calibration_error(
+                y_pred, y_std, y_recal,
+            )
+            logging.info("Iteration %d, recalibration: ECE %.5f -> %.5f",
+                         self.total_iter, ece_uncal, ece_recal)
+
+    def update_recalibrator(self, X_recal, Y_recal):
+        """Update the model's recalibrator.
+
+        Also returns the _uncalibrated_ pair (y_pred, y_std) as 1-d arrays.
+        """
+        Y_pred, Y_std = self.predict(X_recal)
+        y_pred, y_std, y_recal = [y.squeeze(1)
+                                  for y in [Y_pred, Y_std, Y_recal]]
+        self.recalibrator = get_recalibrator(
+            y_pred,
+            y_std,
+            y_recal,
+            mode=self.recal_mode,
+            **self.recal_kwargs
+        )
+        return Y_pred, Y_std
+
+    def recalibrate(self, Y_pred, Y_std):
+        """Recalibrate predictive uncertainties using the model's
+        recalibrator."""
+        assert self.recal_mode is not None, (
+            "recalibration mode is not set; no recalibrator learned"
+        )
+        assert (len(Y_pred.shape) == len(Y_std.shape) == 2 and
+                Y_pred.shape[1] == Y_std.shape[1] == 1), (
+            "inputs to recalibrate() must have shape (n, 1)"
+        )
+
+        y_pred, y_std = [y.squeeze(1) for y in [Y_pred, Y_std]]
+        y_std = self.recalibrator(y_pred, y_std)
+        return np.expand_dims(y_std, 1)
 
     def _predict_single(self, x, comp_grads=True):
         """A helper for predict() and predict_withGradients() per example."""

@@ -171,6 +171,7 @@ class NNAcqCategoricalTF(AcquisitionLCB):
         self.feature_map = feature_map
 
         self.candidates = None
+        self.candidates_features = None
         self._init_candidates()
 
         self.optimizer = self
@@ -225,18 +226,21 @@ class NNAcqCategoricalTF(AcquisitionLCB):
             assert len(m.shape) == 2 and m.shape[1] == s.shape[1] == 1, (
                 f"m.shape: {m.shape}, s.shape: {s.shape}"
             )
+            if getattr(self.model, "recal_mode", None):
+                s = self.model.recalibrate(m, s)
         # greedy w/ batched prediction (tf.keras.Model)
         else:
-            m = utils.ensure_2d(utils.normalize_output(
+            m = np.atleast_2d(utils.normalize_output(
                 self.model.net.predict(self.candidates_features,
                                        self.batch_size)
-            )).numpy()
+            ))
             s = 0
         lcbs = m - self.exploration_weight * s  # N x 1
 
         fx = lcbs.min()
         min_idx = lcbs.argmin(axis=0)
         x = self.candidates[min_idx]
+        # print("Acquisition:", np.argmax(x), ", LCB:", fx)
 
         self.acq_calls += 1
         if self.tb_writer is not None:

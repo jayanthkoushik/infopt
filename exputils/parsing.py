@@ -177,6 +177,7 @@ def make_nn_tf2_parser(parser, mname):
     )
     nn_boparser.add_argument("--bom-up-batch-size", type=int, default=16)
     nn_boparser.add_argument("--bom-up-iters-per-point", type=int, default=50)
+    nn_boparser.add_argument("--bom-up-max-iters", type=int, default=10000)
     nn_boparser.add_argument("--bom-up-upsample-new", type=float, default=None)
     nn_boparser.add_argument("--bom-early-stopping", action="store_true", default=False)
     nn_boparser.add_argument("--bom-n-higs", type=int, default=8)
@@ -188,6 +189,14 @@ def make_nn_tf2_parser(parser, mname):
         default=tf.keras.losses.MeanSquaredError,
     )
     nn_boparser.add_argument("--bom-weight-decay", type=float, default=0.0)
+    nn_boparser.add_argument("--bom-recal-mode", type=str, default=None)
+    nn_boparser.add_argument("--bom-recal-setsize", type=int, default=500)
+    nn_boparser.add_argument(
+        "--bom-recal-params",
+        type=KeyValuePairsType(),
+        metavar="key=value,[...]",
+        default=dict(coverage=0.68, custom_scalar=1.0),
+    )
     if mname == "nnmcd_tf2":
         mcd_parser = parser.add_argument_group("monte carlo dropout")
         mcd_parser.add_argument("--mcd-dropout", type=float, default=0.05)
