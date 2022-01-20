@@ -228,6 +228,14 @@ class NNModelTF(BOModel):
             logging.info("Iteration %d, recalibration: ECE %.5f -> %.5f",
                          self.total_iter, ece_uncal, ece_recal)
 
+            if self.tb_writer is not None:
+                self.tb_writer.add_scalar(
+                    "nn_model/ece_uncal", ece_uncal, self.total_iter,
+                )
+                self.tb_writer.add_scalar(
+                    "nn_model/ece_recal", ece_recal, self.total_iter,
+                )
+
     @tf.function(experimental_relax_shapes=True)
     def _compute_jacobian(self, X_idxs, Y_idxs):
         with tf.GradientTape() as inner_tape:
@@ -246,7 +254,7 @@ class NNModelTF(BOModel):
 
         Also returns the _uncalibrated_ pair (y_pred, y_std) as 1-d arrays.
         """
-        Y_pred, Y_std = self.predict(X_recal)
+        Y_pred, Y_std = self.predict(X_recal, recalibrate=False)
         y_pred, y_std, y_recal = [y.squeeze(1)
                                   for y in [Y_pred, Y_std, Y_recal]]
         self.recalibrator = get_recalibrator(
@@ -277,6 +285,10 @@ class NNModelTF(BOModel):
         """A helper for predict() and predict_withGradients() per example."""
 
         if comp_grads:
+            if self.recal_mode is not None:
+                raise NotImplementedError("recalibration not implemented for "
+                                          "continuous space optimization")
+
             x = tf.Variable(x)
             # variance = mean(influence^2)
             with tf.GradientTape(persistent=True) as outer_tape:
@@ -337,7 +349,7 @@ class NNModelTF(BOModel):
 
         return m, s, self.dmdx, self.dsdx
 
-    def predict(self, X):
+    def predict(self, X, recalibrate=True):
         """Get the predicted mean and std at X.
 
         TODO(yj): batchify this step.
@@ -354,6 +366,8 @@ class NNModelTF(BOModel):
             S.append(s.numpy().item())
         M = tf.concat(M, 0).numpy()
         S = np.array(S)[:, np.newaxis]
+        if self.recal_mode is not None and recalibrate:
+            S = self.recalibrate(M, S)
         return M, S
 
     def predict_withGradients(self, X):

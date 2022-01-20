@@ -226,8 +226,6 @@ class NNAcqCategoricalTF(AcquisitionLCB):
             assert len(m.shape) == 2 and m.shape[1] == s.shape[1] == 1, (
                 f"m.shape: {m.shape}, s.shape: {s.shape}"
             )
-            if getattr(self.model, "recal_mode", None):
-                s = self.model.recalibrate(m, s)
         # greedy w/ batched prediction (tf.keras.Model)
         else:
             m = np.atleast_2d(utils.normalize_output(

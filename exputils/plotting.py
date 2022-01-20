@@ -48,8 +48,21 @@ def load_save_data(res_dir, skip_pats):
                 wd = res["args"]["bom_weight_decay"]
                 if wd > 0.0:
                     suffix.append(f"wd{wd}")
-            if res["args"].get("share_weights", False):  # shared weights (BPNN)
+            # shared weights (BPNN)
+            if res["args"].get("share_weights", False):
                 suffix.append("shared")
+            # recalibration
+            recal_mode = res["args"].get("bom_recal_mode", None)
+            if recal_mode is not None:
+                if recal_mode == "interval":
+                    coverage = res["args"]["bom_recal_params"]["coverage"]
+                    suffix.append(f"recal_{recal_mode}{coverage:g}")
+                elif recal_mode == "custom":
+                    scalar = res["args"]["bom_recal_params"]["custom_scalar"]
+                    if scalar != 1.0:
+                        suffix.append(f"recal_{recal_mode}{scalar:g}")
+                else:  # std
+                    suffix.append(f"recal_{recal_mode}")
         elif mname in ["NNMCD", "NNMCD_TF2"]:
             mname = "NN"
             # handle greedy case (exploration weight == 0)
@@ -60,8 +73,21 @@ def load_save_data(res_dir, skip_pats):
                 acq_type = "MCD"
                 dropout = res["args"]["mcd_dropout"]
                 suffix.append(f"drop{dropout}")
-            if res["args"].get("share_weights", False):  # shared weights (BPNN)
+            # shared weights (BPNN)
+            if res["args"].get("share_weights", False):
                 suffix.append("shared")
+            # recalibration
+            recal_mode = res["args"].get("bom_recal_mode", None)
+            if recal_mode is not None:
+                if recal_mode == "interval":
+                    coverage = res["args"]["bom_recal_params"]["coverage"]
+                    suffix.append(f"recal_{recal_mode}{coverage:g}")
+                elif recal_mode == "custom":
+                    scalar = res["args"]["bom_recal_params"]["custom_scalar"]
+                    if scalar != 1.0:
+                        suffix.append(f"recal_{recal_mode}{scalar:g}")
+                else:  # std
+                    suffix.append(f"recal_{recal_mode}")
         elif mname == "NR":
             if res["args"]["use_nrif"]:
                 acq_type = "INF"

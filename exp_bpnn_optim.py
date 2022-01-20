@@ -257,6 +257,13 @@ def run(args):
 
     result = run_optim(problem, space, model, acq, False, args, eval_hook)
 
+    # recalibration set prediction
+    if args.bom_recal_mode is not None:
+        bo = result["bo"]
+        recal_setsize = args.bom_recal_setsize
+        result["mu_recal"], result["sig_recal"] = \
+            bo.model.predict(bo.X[:recal_setsize])
+
     save_file = args.save_file
     del args.save_file
     del args.func

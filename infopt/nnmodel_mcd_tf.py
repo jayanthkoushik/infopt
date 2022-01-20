@@ -203,13 +203,20 @@ class NNModelMCDTF(BOModel):
             )
             logging.info("Iteration %d, recalibration: ECE %.5f -> %.5f",
                          self.total_iter, ece_uncal, ece_recal)
+            if self.tb_writer is not None:
+                self.tb_writer.add_scalar(
+                    "nn_model/ece_uncal", ece_uncal, self.total_iter,
+                )
+                self.tb_writer.add_scalar(
+                    "nn_model/ece_recal", ece_recal, self.total_iter,
+                )
 
     def update_recalibrator(self, X_recal, Y_recal):
         """Update the model's recalibrator.
 
         Also returns the _uncalibrated_ pair (y_pred, y_std) as 1-d arrays.
         """
-        Y_pred, Y_std = self.predict(X_recal)
+        Y_pred, Y_std = self.predict(X_recal, recalibrate=False)
         y_pred, y_std, y_recal = [y.squeeze(1)
                                   for y in [Y_pred, Y_std, Y_recal]]
         self.recalibrator = get_recalibrator(
@@ -244,6 +251,10 @@ class NNModelMCDTF(BOModel):
             "_predict_single only accepts input tensors with first dimension 1"
             f", got {x.shape[0]}"
         )
+        if comp_grads:
+            if self.recal_mode is not None:
+                raise NotImplementedError("recalibration not implemented for "
+                                          "continuous space optimization")
 
         data = tf.data.Dataset.from_tensor_slices(x)
         T = self.n_dropout_samples
@@ -283,7 +294,7 @@ class NNModelMCDTF(BOModel):
 
         return m, s, dmdx, dsdx
 
-    def predict(self, X):
+    def predict(self, X, recalibrate=True):
         """Get the predicted mean and std at X using MC dropout.
 
         T is the number of dropout samples obtained per input.
@@ -323,6 +334,8 @@ class NNModelMCDTF(BOModel):
         var = 1. / self.tau + \
             tf.math.reduce_variance(predictions, axis=1, keepdims=True).numpy()
         S = np.sqrt(var)
+        if self.recal_mode is not None and recalibrate:
+            S = self.recalibrate(M, S)
         return M, S
 
     def predict_withGradients(self, X):
