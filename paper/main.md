@@ -23,11 +23,9 @@ institute:
     name: Carnegie Mellon University
 abstract: Deep neural networks are increasingly being used to model black-box functions. Examples include modeling brain response to stimuli, material properties under given synthesis conditions, and digital art. In these applications, often the model is a surrogate and the goal is rather to optimize the black-box function to achieve the desired brain response, material property, or digital art characteristics. Moreover, resource constraints imply that, rather than training on a passive dataset, one should focus subsequent sampling on the most informative data points. In the Bayesian setting, this can be achieved by utilizing the ability of Bayesian models such as Gaussian processes to model uncertainty in observed data via posterior variance, which can guide subsequent sampling. However, uncertainty estimates for deep neural networks are largely lacking or are very expensive to compute. For example, bootstrap or cross-validation estimates require re-training the network several times which is often computationally prohibitive. In this work, we use influence functions to estimate the variance of neural network outputs, and design a black-box optimization algorithm similar to confidence bound-based Bayesian algorithms. We demonstrate the effectiveness of our method through experiments on synthetic and real-world optimization problems.
 layout: default
+includes:
+- commands.md
 ---
-
-<div>
-{% include commands.md %}
-</div>
 
 \newcommand{\II}{\mathcal{I}}
 
