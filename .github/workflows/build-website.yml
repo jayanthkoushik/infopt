@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: jayanthkoushik/paje@v2
+    - uses: jayanthkoushik/paje@v3
       with:
         setupscript: |
           cp paper/main.md /www/index.md
           cp paper/references.bib /www/_includes/
           cp paper/commands.md /www/_includes/
           mkdir -p /www/fig
-          convert -antialias -density 300 -quality 100 paper/fig/alg.pdf /www/fig/alg.png
-          convert -antialias -density 300 -quality 100 paper/fig/synth.pdf /www/fig/synth.png
-          convert -antialias -density 300 -quality 100 paper/fig/mnist.pdf /www/fig/mnist.png
+          cp paper/fig/alg.svg /www/fig/
+          cp paper/fig/mnist.svg /www/fig/
+          cp paper/fig/synth.svg /www/fig/
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
