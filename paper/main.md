@@ -4,16 +4,16 @@ author:
   - name: Jayanth Koushik
     affiliation:
     - 1
-    email: jayanthkoushik\@cmu.edu
+    email: jayanthkoushik@cmu.edu
     corresponding: true
   - name: Michael J. Tarr
     affiliation:
     - 1
-    email: michaeltarr\@cmu.edu
+    email: michaeltarr@cmu.edu
   - name: Aarti Singh
     affiliation:
     - 1
-    email: aartisingh\@cmu.edu
+    email: aartisingh@cmu.edu
 institute:
   - id: 1
     name: Carnegie Mellon University
