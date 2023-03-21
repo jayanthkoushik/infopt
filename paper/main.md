@@ -37,6 +37,7 @@ abstract: Deep neural networks are increasingly being used to model black-box
   real-world optimization problems.
 includes:
 - commands.md
+bibliography: references.bib
 ---
 
 \newcommand{\II}{\mathcal{I}}

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: jayanthkoushik/paje@v5
+    - uses: jayanthkoushik/paje@v6
       with:
         setupscript: |
           cp paper/main.md /www/index.md
